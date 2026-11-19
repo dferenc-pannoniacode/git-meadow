@@ -26,6 +26,173 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task Repository_browser_lists_only_immediate_folders_and_opens_a_nested_checkout()
+    {
+        var nested = Path.Combine("Team projects", "Nested checkout");
+        await _git.WriteAsync(nested, "docs/readme.txt", "Workspace fixture");
+        await _git.GitAsync(nested, "init", "-b", "main");
+        await _git.WriteAsync(".", "workspace.txt", "Workspace fixture");
+        Directory.CreateDirectory(Path.Combine(_git.Root, "Archive"));
+
+        var root = Workspace.BrowseRepositories(".");
+        Assert.Equal(".", root.Path);
+        Assert.False(root.HasGitMarker);
+        Assert.Equal(["Archive", "Team projects"], root.Folders);
+
+        var parent = Workspace.BrowseRepositories("Team projects");
+        Assert.False(parent.HasGitMarker);
+        Assert.Equal("Nested checkout", Assert.Single(parent.Folders));
+
+        var checkout = Workspace.BrowseRepositories(Path.Combine(parent.Path, parent.Folders[0]));
+        Assert.True(checkout.HasGitMarker);
+        Assert.Equal("docs", Assert.Single(checkout.Folders));
+        Assert.Equal(nested, await Workspace.OpenAsync(checkout.Path));
+
+        var docs = Workspace.BrowseRepositories(Path.Combine(checkout.Path, "docs"));
+        Assert.False(docs.HasGitMarker);
+        Assert.Empty(docs.Folders);
+    }
+
+    [Fact]
+    public async Task Repository_browser_can_open_workspace_root_but_cannot_browse_metadata_or_outside()
+    {
+        await _git.GitAsync(".", "init", "-b", "main");
+        var sibling = Directory.CreateDirectory(Path.Combine(_git.Root, "..", "workspace-other")).FullName;
+
+        var root = Workspace.BrowseRepositories(".");
+        Assert.True(root.HasGitMarker);
+        Assert.Empty(root.Folders);
+        Assert.Equal(".", await Workspace.OpenAsync(root.Path));
+
+        Assert.Throws<ArgumentException>(() => Workspace.BrowseRepositories(".git"));
+        Assert.Throws<ArgumentException>(() => Workspace.BrowseRepositories(sibling));
+        Assert.Throws<ArgumentException>(() => Workspace.BrowseRepositories(Path.GetRelativePath(_git.Root, sibling)));
+        Assert.Throws<InvalidOperationException>(() => Workspace.BrowseRepositories("missing"));
+    }
+
+    [Fact]
+    public async Task New_folder_can_be_selected_and_initialized_without_changing_existing_files()
+    {
+        const string parent = "Team projects";
+        Directory.CreateDirectory(Path.Combine(_git.Root, parent));
+        var created = await Workspace.CreateFolderAsync(parent, "New checkout");
+
+        Assert.Equal(Path.Combine(parent, "New checkout"), created);
+        Assert.Equal("New checkout", Assert.Single(Workspace.BrowseRepositories(parent).Folders));
+        Assert.True(Workspace.BrowseRepositories(created).IsEmpty);
+        await _git.WriteAsync(created, "notes.txt", "Keep these notes");
+        var selected = Workspace.BrowseRepositories(created);
+        Assert.False(selected.IsEmpty);
+        Assert.False(selected.ContainsRepository);
+
+        Assert.Equal(created, await Workspace.CreateInFolderAsync(selected.Path));
+        Assert.Equal(created, await Workspace.OpenAsync(created));
+        Assert.Equal("main", (await Workspace.ReadAsync(created)).Branch);
+        Assert.True(Workspace.BrowseRepositories(created).ContainsRepository);
+        Assert.Equal("Keep these notes", await _git.WorkingFileAsync(created, "notes.txt"));
+        Assert.False(Workspace.BrowseRepositories(parent).ContainsRepository);
+    }
+
+    [Fact]
+    public async Task Clone_uses_the_existing_empty_nested_folder()
+    {
+        var source = await _git.CreateAsync("source");
+        var commit = await _git.CommitFileAsync(source, "base.txt", "base\n", "Initial revision");
+        var destination = Path.Combine("Team projects", "Cloned checkout");
+        Directory.CreateDirectory(Path.Combine(_git.Root, destination));
+
+        var selected = Workspace.BrowseRepositories(destination);
+        Assert.True(selected.IsEmpty);
+        Assert.False(selected.ContainsRepository);
+
+        Assert.Equal(destination, await Workspace.CloneInFolderAsync(source, selected.Path));
+        Assert.Equal(commit, Assert.Single((await Workspace.ReadAsync(destination)).Commits).Hash);
+        Assert.Equal("base\n", (await _git.WorkingFileAsync(destination, "base.txt")).ReplaceLineEndings("\n"));
+    }
+
+    [Fact]
+    public async Task Clone_requires_an_empty_folder_and_preserves_existing_files()
+    {
+        const string destination = "Existing documents";
+        await _git.WriteAsync(destination, ".notes", "Original notes");
+        var selected = Workspace.BrowseRepositories(destination);
+        Assert.Empty(selected.Folders);
+        Assert.False(selected.IsEmpty);
+        Assert.False(selected.ContainsRepository);
+
+        var refused = await Assert.ThrowsAsync<GitWorkspace.RepositoryDestinationConflictException>(() =>
+            Workspace.CloneInFolderAsync("unused", selected.Path));
+
+        Assert.Equal(GitWorkspace.CloneFolderNotEmptyMessage, refused.Message);
+        Assert.Equal("Original notes", await _git.WorkingFileAsync(destination, ".notes"));
+        Assert.False(Workspace.BrowseRepositories(destination).ContainsRepository);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Existing_working_or_bare_repository_blocks_init_and_clone(bool bare)
+    {
+        const string destination = "Existing checkout";
+        Directory.CreateDirectory(Path.Combine(_git.Root, destination));
+        var selectedBeforeInit = Workspace.BrowseRepositories(destination);
+        Assert.False(selectedBeforeInit.ContainsRepository);
+        if (bare)
+            await _git.GitAsync(destination, "init", "--bare", "-b", "main");
+        else
+            await _git.GitAsync(destination, "init", "-b", "main");
+        var headPath = bare ? "HEAD" : ".git/HEAD";
+
+        var selectedAfterInit = Workspace.BrowseRepositories(destination);
+        Assert.True(selectedAfterInit.ContainsRepository);
+        Assert.Equal(!bare, selectedAfterInit.HasGitMarker);
+        var init = await Assert.ThrowsAsync<GitWorkspace.RepositoryDestinationConflictException>(() =>
+            Workspace.CreateInFolderAsync(selectedBeforeInit.Path));
+        var clone = await Assert.ThrowsAsync<GitWorkspace.RepositoryDestinationConflictException>(() =>
+            Workspace.CloneInFolderAsync("unused", selectedBeforeInit.Path));
+
+        Assert.Equal(GitWorkspace.ExistingRepositoryMessage, init.Message);
+        Assert.Equal(GitWorkspace.ExistingRepositoryMessage, clone.Message);
+        Assert.Equal("ref: refs/heads/main\n", (await _git.WorkingFileAsync(destination, headPath)).ReplaceLineEndings("\n"));
+        Assert.Equal(!bare, Directory.Exists(Path.Combine(_git.Root, destination, ".git")));
+    }
+
+    [Fact]
+    public async Task Existing_git_metadata_is_protected_before_initializing_an_existing_folder()
+    {
+        const string destination = "Checkout metadata";
+        const string pointer = "gitdir: ../missing-metadata\n";
+        await _git.WriteAsync(destination, ".git", pointer);
+
+        Assert.True(Workspace.BrowseRepositories(destination).ContainsRepository);
+        var refused = await Assert.ThrowsAsync<GitWorkspace.RepositoryDestinationConflictException>(() =>
+            Workspace.CreateInFolderAsync(destination));
+
+        Assert.Equal(GitWorkspace.ExistingRepositoryMessage, refused.Message);
+        Assert.Equal(pointer, await _git.WorkingFileAsync(destination, ".git"));
+    }
+
+    [Fact]
+    public async Task Folder_destination_commands_reject_parent_traversal_metadata_and_collisions()
+    {
+        const string outside = "../other";
+        Directory.CreateDirectory(Path.Combine(_git.Root, outside));
+        Directory.CreateDirectory(Path.Combine(_git.Root, "existing"));
+        await _git.WriteAsync(".", "existing.txt", "Original file");
+
+        await Assert.ThrowsAsync<ArgumentException>(() => Workspace.CreateFolderAsync(outside, "new"));
+        await Assert.ThrowsAsync<ArgumentException>(() => Workspace.CreateInFolderAsync(outside));
+        await Assert.ThrowsAsync<ArgumentException>(() => Workspace.CloneInFolderAsync("unused", outside));
+        await Assert.ThrowsAsync<ArgumentException>(() => Workspace.CreateFolderAsync(".", "../new"));
+        await Assert.ThrowsAsync<ArgumentException>(() => Workspace.CreateFolderAsync(".", ".git"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Workspace.CreateFolderAsync(".", "existing"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Workspace.CreateFolderAsync(".", "existing.txt"));
+
+        Assert.Empty(Directory.EnumerateFileSystemEntries(Path.Combine(_git.Root, outside)));
+        Assert.Equal("Original file", await _git.WorkingFileAsync(".", "existing.txt"));
+    }
+
+    [Fact]
     public async Task Workspace_rejects_existing_repository_outside_workspace()
     {
         const string outside = "../other";

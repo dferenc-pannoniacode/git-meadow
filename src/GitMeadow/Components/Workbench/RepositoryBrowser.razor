@@ -1,0 +1,158 @@
+<OverlayPanel TitleId="repository-browser-title" Class="repository-browser" Busy="Busy" Cancel="Cancel">
+    <header>
+        <h2 id="repository-browser-title">@Title</h2>
+        <button type="button" class="button icon quiet" aria-label="Close" disabled="@Busy" @onclick="Cancel">×</button>
+    </header>
+    <div class="folder-browser">
+        <div class="folder-toolbar">
+            <nav class="folder-breadcrumbs" aria-label="Workspace folders" tabindex="-1" @ref="_breadcrumbs">
+                @if (FolderPath is not null and not ".")
+                {
+                    var segments = FolderPath.Split(Path.DirectorySeparatorChar);
+                    <button type="button" disabled="@Busy" @onclick="@(() => Browse.InvokeAsync("."))">@Root</button>
+                    @for (var index = 0; index < segments.Length - 1; index++)
+                    {
+                        var name = segments[index];
+                        var destination = Path.Combine(segments[..(index + 1)]);
+                        <span aria-hidden="true">›</span>
+                        <button type="button" disabled="@Busy" @onclick="@(() => Browse.InvokeAsync(destination))">@name</button>
+                    }
+                    <span aria-hidden="true">›</span>
+                    <strong aria-current="location">@segments[^1]</strong>
+                }
+                else
+                {
+                    <strong aria-current="location">@Root</strong>
+                }
+            </nav>
+            @if (AllowNewFolder)
+            {
+                <button type="button" class="button" disabled="@(Busy || FolderPath is null || _newFolderParent is not null)" @onclick="ShowNewFolder">New folder</button>
+            }
+        </div>
+
+        @if (_newFolderParent is { } parent)
+        {
+            <form class="folder-create-form" @onsubmit="@(() => CreateFolder.InvokeAsync((parent, _folderName.Trim())))" @onsubmit:preventDefault>
+                <label>
+                    Folder name
+                    <input @ref="_folderNameInput" @bind="_folderName" @bind:event="oninput" autocomplete="off" required disabled="@Busy" />
+                </label>
+                <button type="button" class="button" disabled="@Busy" @onclick="HideNewFolder">Cancel</button>
+                <button type="submit" class="button" disabled="@(Busy || string.IsNullOrWhiteSpace(_folderName))">Create folder</button>
+            </form>
+        }
+
+        @if (Error is not null)
+        {
+            <p class="danger-note" role="alert">@Error</p>
+        }
+        @if (FolderPath is { } path && Folders.Count > 0)
+        {
+            <ul class="folder-list" aria-label="Subfolders" @key="path">
+                @foreach (var name in Folders)
+                {
+                    <li @key="name">
+                        <button type="button" disabled="@Busy" @onclick="@(() => Browse.InvokeAsync(Path.Combine(path, name)))">
+                            <span class="folder-icon" aria-hidden="true"></span>
+                            <span class="folder-name">@name</span>
+                            <span class="folder-chevron" aria-hidden="true">›</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+        else if (FolderPath is not null)
+        {
+            <p class="folder-empty">No subfolders here.</p>
+        }
+
+        @if (Warning is not null && Warning != Error)
+        {
+            <p class="danger-note" role="status">@Warning</p>
+        }
+        @{ var selectedPath = FolderPath; }
+        <form class="folder-confirm-form" @onsubmit="@(() => ConfirmAsync(selectedPath))" @onsubmit:preventDefault>
+            @if (ShowRemote)
+            {
+                <label>
+                    Remote URL or workspace path
+                    <input @bind="_remote" @bind:event="oninput" autocomplete="off" required disabled="@Busy" />
+                </label>
+            }
+            <footer>
+                @if (Hint is not null)
+                {
+                    <p class="folder-selection" role="status">@Hint</p>
+                }
+                <button type="button" class="button" disabled="@Busy" @onclick="Cancel">Cancel</button>
+                <button type="submit" class="button primary" disabled="@(!CanSubmit)">@(Busy ? "Working…" : ConfirmLabel)</button>
+            </footer>
+        </form>
+    </div>
+</OverlayPanel>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public string ConfirmLabel { get; set; } = "";
+    [Parameter, EditorRequired] public string Root { get; set; } = "";
+    [Parameter] public string? FolderPath { get; set; }
+    [Parameter] public IReadOnlyList<string> Folders { get; set; } = [];
+    [Parameter] public bool CanConfirm { get; set; }
+    [Parameter] public bool ShowRemote { get; set; }
+    [Parameter] public bool AllowNewFolder { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? Warning { get; set; }
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public EventCallback<string> Browse { get; set; }
+    [Parameter] public EventCallback<(string Path, string Remote)> Confirm { get; set; }
+    [Parameter] public EventCallback<(string Path, string Name)> CreateFolder { get; set; }
+    [Parameter] public EventCallback Cancel { get; set; }
+
+    private ElementReference _breadcrumbs;
+    private ElementReference _folderNameInput;
+    private string? _renderedPath;
+    private string? _newFolderParent;
+    private string _folderName = "";
+    private string _remote = "";
+    private bool _focusNewFolder;
+
+    private bool CanSubmit => CanConfirm && !Busy && _newFolderParent is null && (!ShowRemote || !string.IsNullOrWhiteSpace(_remote));
+
+    private void ShowNewFolder()
+    {
+        _newFolderParent = FolderPath;
+        _focusNewFolder = _newFolderParent is not null;
+    }
+
+    private void HideNewFolder()
+    {
+        _newFolderParent = null;
+        _folderName = "";
+        _focusNewFolder = false;
+    }
+
+    private Task ConfirmAsync(string? path) => path is not null && CanSubmit
+        ? Confirm.InvokeAsync((path, _remote))
+        : Task.CompletedTask;
+
+    protected override void OnParametersSet()
+    {
+        if (_newFolderParent is not null && _newFolderParent != FolderPath)
+            HideNewFolder();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var moved = _renderedPath is not null && _renderedPath != FolderPath;
+        _renderedPath = FolderPath;
+        if (_focusNewFolder)
+        {
+            _focusNewFolder = false;
+            await _folderNameInput.FocusAsync(preventScroll: true);
+        }
+        else if (moved)
+            await _breadcrumbs.FocusAsync(preventScroll: true);
+    }
+}

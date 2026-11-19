@@ -45,9 +45,9 @@
                     <h1>Open a repository</h1>
                     <p>Review commit history, stage changes, and manage branches in your browser.</p>
                     <div class="welcome-buttons">
-                        <button type="button" class="button primary" disabled="@_busy" @onclick="@(() => StartRepositoryForm(RepositoryForm.Open))">Open repository</button>
-                        <button type="button" class="button" disabled="@_busy" @onclick="@(() => StartRepositoryForm(RepositoryForm.Clone))">Clone repository</button>
-                        <button type="button" class="button" disabled="@_busy" @onclick="@(() => StartRepositoryForm(RepositoryForm.Create))">New repository</button>
+                        <button type="button" class="button primary" disabled="@_busy" @onclick="@(() => ShowRepositoryBrowserAsync(RepositoryForm.Open))">Open repository</button>
+                        <button type="button" class="button" disabled="@_busy" @onclick="@(() => ShowRepositoryBrowserAsync(RepositoryForm.Clone))">Clone repository</button>
+                        <button type="button" class="button" disabled="@_busy" @onclick="@(() => ShowRepositoryBrowserAsync(RepositoryForm.Create))">New repository</button>
                     </div>
                     <button type="button" class="sample-link" disabled="@_busy" @onclick="@(CreateSampleAsync)">Explore with a sample repository <span aria-hidden="true">↗</span></button>
                     @if (_busy) { <p class="working" role="status">Working…</p> }
@@ -103,7 +103,15 @@
     </main>
 </div>
 
-@if (_repositoryMenu is { } repositoryMenu)
+@if (_addRepositoryMenu is { } addMenu)
+{
+    <ContextMenu @key="addMenu" Anchor="addMenu.Anchor" Label="Add repository">
+        <button type="button" @onclick="@(() => UseAddRepositoryMenuAsync(addMenu, RepositoryForm.Open))">Open repository</button>
+        <button type="button" @onclick="@(() => UseAddRepositoryMenuAsync(addMenu, RepositoryForm.Create))">New repository</button>
+        <button type="button" @onclick="@(() => UseAddRepositoryMenuAsync(addMenu, RepositoryForm.Clone))">Clone repository</button>
+    </ContextMenu>
+}
+else if (_repositoryMenu is { } repositoryMenu)
 {
     <RepositoryContextMenu @key="repositoryMenu" X="repositoryMenu.Pointer.ClientX" Y="repositoryMenu.Pointer.ClientY"
                            Title="@RepositoryDisplayName(repositoryMenu.Repository)"
@@ -146,9 +154,17 @@ else if (_commitMenu is { } commitMenu)
 }
 else if (_repoForm is { } form)
 {
-    <OperationDialog @key="form" Title="@FormTitle(form)" ValueLabel="@FormField(form)"
-                     ExtraLabel="@(form == RepositoryForm.Clone ? "Workspace-relative destination" : null)" ExtraOptional="false"
-                     Busy="_busy" Error="@_dialogError" Cancel="CloseDialog" Confirm="SubmitRepositoryAsync" />
+    var opening = form == RepositoryForm.Open;
+    var warning = DestinationWarning(form, _repositoryFolder);
+    var canConfirm = _repositoryFolder is { } folder && (opening ? folder.HasGitMarker : warning is null);
+    <RepositoryBrowser @key="form" Title="@FormTitle(form)" ConfirmLabel="@(form == RepositoryForm.Create ? "Create repository" : FormTitle(form))"
+                       Root="@Workspace.Root" FolderPath="@_repositoryFolder?.Path" Folders="@(_repositoryFolder?.Folders ?? [])"
+                       Hint="@(opening && _repositoryFolder is not null ? (canConfirm ? "Git working tree" : "Choose a Git working tree.") : null)"
+                       ShowRemote="@(form == RepositoryForm.Clone)" AllowNewFolder="@(!opening)" CanConfirm="canConfirm"
+                       Busy="_busy" Error="@_dialogError" Warning="@warning" Cancel="CloseDialog"
+                       Browse="@(path => BrowseRepositoryFoldersAsync(form, path))"
+                       Confirm="@(input => SubmitRepositoryAsync(form, input))"
+                       CreateFolder="@(input => CreateRepositoryFolderAsync(form, input))" />
 }
 else if (_operation is { } op)
 {
@@ -172,12 +188,6 @@ else if (_menuTitle is not null)
                 @foreach (var item in _menu)
                 {
                     <button type="button" class="button @(item.Destructive ? "danger-quiet" : null)" @onclick="@(() => ShowOperation(item))">@item.Title</button>
-                }
-                @if (_menuTitle == "Add repository")
-                {
-                    <button type="button" class="button" @onclick="@(() => StartRepositoryForm(RepositoryForm.Open))">Open repository</button>
-                    <button type="button" class="button" @onclick="@(() => StartRepositoryForm(RepositoryForm.Clone))">Clone repository</button>
-                    <button type="button" class="button" @onclick="@(() => StartRepositoryForm(RepositoryForm.Create))">New repository</button>
                 }
             </div>
     </OverlayPanel>

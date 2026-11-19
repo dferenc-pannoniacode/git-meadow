@@ -11,6 +11,7 @@
 
     [Parameter] public double X { get; set; }
     [Parameter] public double Y { get; set; }
+    [Parameter] public ElementReference? Anchor { get; set; }
     [Parameter, EditorRequired] public string Label { get; set; } = "";
     [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
 
@@ -24,7 +25,7 @@
         try
         {
             await using var module = await JS.InvokeAsync<IJSObjectReference>("import", ModulePath);
-            await module.InvokeVoidAsync(ShowMethod, _menu, X, Y);
+            await module.InvokeVoidAsync(ShowMethod, _menu, X, Y, Anchor);
         }
         catch (JSDisconnectedException)
         {

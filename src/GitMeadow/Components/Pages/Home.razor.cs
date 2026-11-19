@@ -2,6 +2,7 @@ using System.Text;
 using GitMeadow.Components.Workbench;
 using GitMeadow.Git;
 using GitMeadow.Workbench;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 
 namespace GitMeadow.Components.Pages;
@@ -11,6 +12,10 @@ public partial class Home
     private const int CommitPage = 300;
     private const int MaximumCommits = 5000;
     private enum RepositoryForm { Open, Create, Clone }
+    private sealed class AddRepositoryMenu(ElementReference anchor)
+    {
+        public ElementReference Anchor { get; } = anchor;
+    }
     private sealed record CommitMenu(string Hash, double X, double Y, IReadOnlyList<Operation> Actions);
     private sealed record RepositoryMenu(string Repository, MouseEventArgs Pointer);
     private sealed record ReferenceMenu(GitRef Reference, MouseEventArgs Pointer, IReadOnlyList<Operation> Actions);
@@ -29,6 +34,7 @@ public partial class Home
     private string? _dialogError;
     private string? _menuTitle;
     private IReadOnlyList<Operation> _menu = [];
+    private AddRepositoryMenu? _addRepositoryMenu;
     private CommitMenu? _commitMenu;
     private RepositoryMenu? _repositoryMenu;
     private ReferenceMenu? _referenceMenu;
@@ -36,6 +42,7 @@ public partial class Home
     private string? _operationRepo;
     private string? _operationCommit;
     private RepositoryForm? _repoForm;
+    private GitWorkspace.RepositoryFolder? _repositoryFolder;
     private ChangeSelection? _change;
     private string? _workingDiff;
     private string? _workingError;
@@ -325,7 +332,18 @@ public partial class Home
 
     private void ShowPull() => ShowOperation(new("Pull", GitAction.Pull, "Remote (optional)", "Branch (optional)", ValueOptional: true));
     private void ShowPush() => ShowOperation(new("Push", GitAction.Push, "Remote (optional)", "Local branch or tag (optional)", ValueOptional: true));
-    private void ShowRepositoryMenu() => ShowMenu("Add repository", []);
+    private void ShowRepositoryMenu(ElementReference anchor)
+    {
+        if (_busy || ModalOpen)
+            return;
+
+        CloseContextMenus();
+        _addRepositoryMenu = new(anchor);
+    }
+
+    private Task UseAddRepositoryMenuAsync(AddRepositoryMenu menu, RepositoryForm form) =>
+        ReferenceEquals(_addRepositoryMenu, menu) ? ShowRepositoryBrowserAsync(form) : Task.CompletedTask;
+
     private void ShowNewRefs() => ShowMenu("Create reference",
     [
         .. NewRefActions(null),
@@ -447,11 +465,73 @@ public partial class Home
             : target;
     }
 
-    private void StartRepositoryForm(RepositoryForm form)
+    private Task ShowRepositoryBrowserAsync(RepositoryForm form)
     {
+        if (_busy || ModalOpen)
+            return Task.CompletedTask;
+
         CloseDialog();
         _repoForm = form;
+        return BrowseRepositoryFoldersAsync(form, ".");
     }
+
+    private Task BrowseRepositoryFoldersAsync(RepositoryForm form, string path) => WorkAsync(() =>
+    {
+        if (_repoForm == form)
+            _repositoryFolder = Workspace.BrowseRepositories(path);
+        return Task.CompletedTask;
+    }, dialog: true);
+
+    private Task CreateRepositoryFolderAsync(RepositoryForm form, (string Path, string Name) input) => WorkAsync(async () =>
+    {
+        if (_repoForm != form || form == RepositoryForm.Open || _repositoryFolder?.Path != input.Path)
+            return;
+
+        var folder = await Workspace.CreateFolderAsync(input.Path, input.Name);
+        _repositoryFolder = Workspace.BrowseRepositories(folder);
+    }, dialog: true);
+
+    private Task SubmitRepositoryAsync(RepositoryForm form, (string Path, string Remote) input) => WorkAsync(async () =>
+    {
+        if (_repoForm != form || _repositoryFolder is not { } folder || folder.Path != input.Path)
+            return;
+        if ((form == RepositoryForm.Open && !folder.HasGitMarker) || DestinationWarning(form, folder) is not null)
+            return;
+
+        string repo;
+        try
+        {
+            repo = form switch
+            {
+                RepositoryForm.Create => await Workspace.CreateInFolderAsync(folder.Path),
+                RepositoryForm.Clone => await Workspace.CloneInFolderAsync(input.Remote.Trim(), folder.Path),
+                _ => folder.Path
+            };
+        }
+        catch (GitWorkspace.RepositoryDestinationConflictException)
+        {
+            _repositoryFolder = Workspace.BrowseRepositories(folder.Path);
+            throw;
+        }
+
+        _repositories = await Workspace.ListAsync();
+        await ReadRepositoryAsync(repo);
+        CloseDialog();
+    }, dialog: true);
+
+    private static string FormTitle(RepositoryForm form) => form switch
+    {
+        RepositoryForm.Open => "Open repository",
+        RepositoryForm.Clone => "Clone repository",
+        _ => "New repository"
+    };
+
+    private static string? DestinationWarning(RepositoryForm form, GitWorkspace.RepositoryFolder? folder) => (form, folder) switch
+    {
+        (RepositoryForm.Create or RepositoryForm.Clone, { ContainsRepository: true }) => GitWorkspace.ExistingRepositoryMessage,
+        (RepositoryForm.Clone, { IsEmpty: false }) => GitWorkspace.CloneFolderNotEmptyMessage,
+        _ => null
+    };
 
     private void ShowGitSettings()
     {
@@ -462,6 +542,7 @@ public partial class Home
     private void CloseDialog()
     {
         (_repoForm, _operation, _menuTitle, _outputQuery, _output, _dialogError) = (null, null, null, null, null, null);
+        _repositoryFolder = null;
         _gitSettingsOpen = false;
         _operationRepo = null;
         _operationCommit = null;
@@ -472,35 +553,11 @@ public partial class Home
 
     private void CloseContextMenus()
     {
+        _addRepositoryMenu = null;
         _commitMenu = null;
         _repositoryMenu = null;
         _referenceMenu = null;
     }
-
-    private static string FormTitle(RepositoryForm form) => form switch
-    {
-        RepositoryForm.Create => "New repository",
-        RepositoryForm.Clone => "Clone repository",
-        _ => "Open repository"
-    };
-
-    private static string FormField(RepositoryForm form) => form == RepositoryForm.Clone
-        ? "Remote URL"
-        : "Workspace-relative directory";
-
-    private Task SubmitRepositoryAsync((string? Value, string? Extra) input) => WorkAsync(async () =>
-    {
-        var path = input.Value?.Trim() ?? "";
-        var repo = _repoForm switch
-        {
-            RepositoryForm.Create => await Workspace.CreateAsync(path),
-            RepositoryForm.Clone => await Workspace.CloneAsync(path, input.Extra?.Trim() ?? ""),
-            _ => await Workspace.OpenAsync(path)
-        };
-        _repositories = await Workspace.ListAsync();
-        await ReadRepositoryAsync(repo);
-        CloseDialog();
-    }, dialog: true);
 
     private Task CreateSampleAsync() => WorkAsync(async () =>
     {

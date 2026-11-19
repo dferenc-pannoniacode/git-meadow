@@ -223,6 +223,32 @@ h1 { font-size: clamp(22px, 2.9vw, 34px); letter-spacing: -.045em; line-height: 
 .dialog-description { font-size: 12px; color: var(--muted); }
 .dialog footer { display: flex; justify-content: flex-end; gap: 7px; padding: 7px 0 0; }
 .dialog .danger-note { padding: 9px; border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.repository-browser { width: min(100%, 540px); }
+.folder-browser { display: grid; gap: 12px; padding: 16px; }
+.folder-toolbar { display: flex; flex-wrap: wrap; align-items: start; gap: 8px; }
+.folder-toolbar nav { flex: 1 1 190px; min-width: 0; }
+.folder-browser .folder-create-form { grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 7px; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-muted); }
+.folder-browser .folder-confirm-form { gap: 8px; padding: 0; }
+.folder-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-muted); color: var(--muted); font: 12px var(--mono); }
+.folder-breadcrumbs button, .folder-breadcrumbs strong { min-width: 0; max-width: 100%; padding: 4px 3px; overflow-wrap: anywhere; }
+.folder-breadcrumbs button { border: 0; border-radius: 4px; color: var(--accent); background: transparent; text-align: left; }
+.folder-breadcrumbs button:hover:not(:disabled) { background: var(--accent-soft); }
+.folder-breadcrumbs strong { color: var(--text); }
+.folder-list { max-height: 42dvh; overflow: auto; margin: 0; padding: 4px; list-style: none; border: 1px solid var(--border); border-radius: 7px; }
+.folder-list button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 7px 9px; border: 0; border-radius: 5px; color: var(--text); background: transparent; text-align: left; }
+.folder-list button:hover:not(:disabled), .folder-list button:focus-visible { background: var(--accent-soft); }
+.folder-list button:focus-visible { outline-offset: -2px; }
+.folder-icon { position: relative; flex: 0 0 16px; height: 11px; margin-top: 3px; border: 1px solid var(--accent); border-radius: 2px; background: var(--accent-soft); }
+.folder-icon::before { content: ""; position: absolute; top: -4px; left: -1px; width: 8px; height: 4px; border: 1px solid var(--accent); border-bottom: 0; border-radius: 2px 2px 0 0; background: var(--accent-soft); }
+.folder-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.folder-chevron { color: var(--muted); }
+.folder-empty { padding: 18px 10px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); text-align: center; }
+.folder-browser footer { flex-wrap: wrap; align-items: center; }
+.folder-selection { flex: 1 0 140px; color: var(--muted); font-size: 12px; }
+@media (max-width: 420px) {
+    .folder-browser .folder-create-form { grid-template-columns: 1fr 1fr; }
+    .folder-create-form label { grid-column: 1 / -1; }
+}
 .output-dialog { width: min(100%, 820px); }
 .output-dialog footer { padding: 12px; }
 .menu-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }

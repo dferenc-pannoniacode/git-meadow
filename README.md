@@ -10,7 +10,7 @@ If you previously configured Git or SSH inside a container without a home volume
 docker compose up --build --detach --wait
 ```
 
-Open [http://127.0.0.1:5080](http://127.0.0.1:5080). Choose **Explore with a sample repository** to try a real merge graph, two working-tree changes, and the commit workflow. Use **Open repository** for a folder already in the workspace, **Clone repository** for an existing remote, or **New repository** to initialize an empty checkout.
+Open [http://127.0.0.1:5080](http://127.0.0.1:5080). Choose **Explore with a sample repository** to try a real merge graph, two working-tree changes, and the commit workflow. Use **Open repository** to browse existing checkouts, **Clone repository** to clone a remote into an empty folder, or **New repository** to initialize a checkout. The workspace picker lets you create a destination folder for either Clone or New.
 
 The `workspace` volume keeps repositories across container replacements and image upgrades. The `git-home` volume keeps global Git settings and credentials in `/home/app`. Run `docker compose down` to stop the app and keep both volumes. Adding `--volumes` removes them.
 
@@ -68,7 +68,7 @@ $env:GitMeadow__Workspace = 'C:\Projects'
 dotnet run --project src/GitMeadow
 ```
 
-Open [http://127.0.0.1:5080](http://127.0.0.1:5080). The workspace can contain multiple checkouts or be a checkout itself. The sidebar discovers the root and its direct children. To open a deeper checkout, enter its workspace-relative path. Without an override, the host uses `workspace/` in the application’s content root.
+Open [http://127.0.0.1:5080](http://127.0.0.1:5080). The workspace can contain multiple checkouts or be a checkout itself. The sidebar discovers the root and its direct children. Choose **Open repository** to browse for deeper checkouts inside the workspace. Without an override, the host uses `workspace/` in the application’s content root.
 
 ## Workflows
 

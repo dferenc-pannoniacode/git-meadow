@@ -2,6 +2,9 @@ namespace GitMeadow.Git;
 
 public sealed partial class GitWorkspace(string root)
 {
+    internal const string ExistingRepositoryMessage = "This folder already contains a Git repository or its metadata. Choose another folder.";
+    internal const string CloneFolderNotEmptyMessage = "Choose an empty folder to clone into.";
+
     private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
         : StringComparer.Ordinal;
@@ -14,6 +17,7 @@ public sealed partial class GitWorkspace(string root)
 
     public Task<IReadOnlyList<string>> ListAsync()
     {
+        ValidateNoLinks(Root, Root);
         Directory.CreateDirectory(Root);
         List<string> repositories = [];
         if (HasGitMarker(Root))
@@ -29,21 +33,57 @@ public sealed partial class GitWorkspace(string root)
         return Task.FromResult<IReadOnlyList<string>>(repositories);
     }
 
+    internal RepositoryFolder BrowseRepositories(string relativePath)
+    {
+        var path = GetRepositoryFolderPath(relativePath);
+        var options = new EnumerationOptions
+        {
+            AttributesToSkip = FileAttributes.ReparsePoint,
+            IgnoreInaccessible = false
+        };
+        var folders = Directory.EnumerateDirectories(path, "*", options)
+            .Select(directory => Path.GetFileName(directory))
+            .Where(name => !HasMetadataComponent(name))
+            .Order(PathComparer)
+            .ToArray();
+
+        return new RepositoryFolder(Path.GetRelativePath(Root, path), HasGitMarker(path), folders,
+            ContainsGitMetadata(path), IsEmptyDirectory(path));
+    }
+
     public async Task<string> OpenAsync(string path)
     {
         var repository = await GetRepositoryAsync(path);
         return Path.GetRelativePath(Root, repository.Path);
     }
 
-    public async Task<string> CreateAsync(string name)
+    public Task<string> CreateAsync(string name) =>
+        UseDestinationAsync(() => GetNewRepositoryDestination(name), InitializeRepositoryAsync);
+
+    public Task<string> CloneAsync(string url, string name) =>
+        UseDestinationAsync(() => GetNewRepositoryDestination(name), target => CloneRepositoryAsync(url, target));
+
+    internal Task<string> CreateInFolderAsync(string path) =>
+        UseDestinationAsync(() => GetAvailableRepositoryFolder(path, requireEmpty: false), InitializeRepositoryAsync);
+
+    internal Task<string> CloneInFolderAsync(string url, string path) =>
+        UseDestinationAsync(() => GetAvailableRepositoryFolder(path, requireEmpty: true),
+            target => CloneRepositoryAsync(Required(url, "Enter a remote URL."), target));
+
+    internal Task<string> CreateFolderAsync(string parentPath, string name) =>
+        UseDestinationAsync(() => GetNewSubfolderDestination(parentPath, name), target =>
+        {
+            Directory.CreateDirectory(target);
+            return Task.CompletedTask;
+        });
+
+    private async Task<string> UseDestinationAsync(Func<string> resolveTarget, Func<string, Task> change)
     {
-        var target = Destination(name);
         await _catalogGate.WaitAsync();
         try
         {
-            Directory.CreateDirectory(Root);
-            RequireNewDestination(target);
-            await RunAsync(Root, ["init", "--initial-branch=main", "--template=", "--", target]);
+            var target = resolveTarget();
+            await change(target);
             return Path.GetRelativePath(Root, target);
         }
         finally
@@ -52,24 +92,15 @@ public sealed partial class GitWorkspace(string root)
         }
     }
 
-    public async Task<string> CloneAsync(string url, string name)
+    private Task InitializeRepositoryAsync(string target) =>
+        RunAsync(Root, ["init", "--initial-branch=main", "--template=", "--", target]);
+
+    private Task CloneRepositoryAsync(string url, string target)
     {
-        var target = Destination(name);
-        await _catalogGate.WaitAsync();
-        try
-        {
-            Directory.CreateDirectory(Root);
-            RequireNewDestination(target);
-            var remote = ValidateRemote(Root, url);
-            await RunAsync(Root,
-                ["clone", "--no-local", "--no-recurse-submodules", "--template=", "--", remote.Url, target],
-                localTransport: remote.IsLocal);
-            return Path.GetRelativePath(Root, target);
-        }
-        finally
-        {
-            _catalogGate.Release();
-        }
+        var remote = ValidateRemote(Root, url);
+        return RunAsync(Root,
+            ["clone", "--no-local", "--no-recurse-submodules", "--template=", "--", remote.Url, target],
+            localTransport: remote.IsLocal);
     }
 
     private async Task<T> WithRepositoryAsync<T>(string name, Func<Repository, Task<T>> action)
@@ -141,14 +172,54 @@ public sealed partial class GitWorkspace(string root)
         return contents;
     }
 
-    private string Destination(string name)
+    private string GetNewRepositoryDestination(string name)
     {
-        if (string.IsNullOrWhiteSpace(name) || name.Trim() != name ||
-            name is "." or ".." || name.StartsWith('.') ||
-            name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
-            name.Contains('/') || name.Contains('\\'))
+        if (!IsFolderName(name) || name.StartsWith('.'))
             throw new ArgumentException("Enter a folder name without slashes or leading dots.", nameof(name));
-        return GetWorkspacePath(name);
+
+        var target = GetWorkspacePath(name);
+        Directory.CreateDirectory(Root);
+        RequireNewDestination(target);
+        return target;
+    }
+
+    private string GetNewSubfolderDestination(string parentPath, string name)
+    {
+        if (!IsFolderName(name) || OperatingSystem.IsWindows() && name.EndsWith('.'))
+            throw new ArgumentException("Enter a valid folder name without slashes.", nameof(name));
+
+        var parent = GetRepositoryFolderPath(parentPath);
+        var target = NormalizePath(Path.Combine(parent, name));
+        ValidateNoLinks(Root, target);
+        RequireNewDestination(target);
+        return target;
+    }
+
+    private static bool IsFolderName(string name) =>
+        !string.IsNullOrWhiteSpace(name) && name.Trim() == name && name is not ("." or "..") &&
+        name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && !name.Contains('/') && !name.Contains('\\') &&
+        !HasMetadataComponent(name);
+
+    private string GetAvailableRepositoryFolder(string relativePath, bool requireEmpty)
+    {
+        var path = GetRepositoryFolderPath(relativePath);
+        if (ContainsGitMetadata(path))
+            throw new RepositoryDestinationConflictException(ExistingRepositoryMessage);
+        if (requireEmpty && !IsEmptyDirectory(path))
+            throw new RepositoryDestinationConflictException(CloneFolderNotEmptyMessage);
+        return path;
+    }
+
+    private string GetRepositoryFolderPath(string relativePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
+        if (Components(relativePath).Contains(".."))
+            throw new ArgumentException("Choose a folder inside the workspace.", nameof(relativePath));
+
+        var path = GetWorkspacePath(relativePath);
+        if (!Directory.Exists(path))
+            throw new InvalidOperationException("This workspace folder is no longer available.");
+        return path;
     }
 
     private string GetWorkspacePath(string relative)
@@ -197,6 +268,9 @@ public sealed partial class GitWorkspace(string root)
         if (Path.IsPathRooted(relative) || Components(relative).FirstOrDefault() == "..")
             throw new InvalidOperationException("The path is outside the configured workspace.");
 
+        if (IsLink(root))
+            throw new InvalidOperationException("The selected path traverses a symbolic link or junction.");
+
         var current = root;
         foreach (var segment in Components(relative).Where(segment => segment != "."))
         {
@@ -206,27 +280,41 @@ public sealed partial class GitWorkspace(string root)
         }
     }
 
-    private static bool IsLink(string path)
+    private static bool IsLink(string path) =>
+        ReadPathAttributes(path) is { } attributes && (attributes & FileAttributes.ReparsePoint) != 0;
+
+    private static FileAttributes? ReadPathAttributes(string path)
     {
         try
         {
-            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+            return File.GetAttributes(path);
         }
         catch (FileNotFoundException)
         {
-            return false;
+            return null;
         }
         catch (DirectoryNotFoundException)
         {
-            return false;
+            return null;
         }
     }
 
     private static bool HasGitMarker(string path)
     {
         var marker = Path.Combine(path, ".git");
-        return Directory.Exists(marker) || File.Exists(marker);
+        return (Directory.Exists(marker) || File.Exists(marker)) && !IsLink(marker);
     }
+
+    private static bool ContainsGitMetadata(string path) =>
+        ReadPathAttributes(Path.Combine(path, ".git")) is not null ||
+        ReadPathAttributes(Path.Combine(path, "HEAD")) is { } head && (head & FileAttributes.Directory) == 0 &&
+        HasDirectoryEntry(path, "objects") && (HasDirectoryEntry(path, "refs") || HasDirectoryEntry(path, "reftable"));
+
+    private static bool HasDirectoryEntry(string path, string name) =>
+        ReadPathAttributes(Path.Combine(path, name)) is { } attributes &&
+        (attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0;
+
+    private static bool IsEmptyDirectory(string path) => !Directory.EnumerateFileSystemEntries(path).Any();
 
     private static string NormalizePath(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
@@ -253,4 +341,7 @@ public sealed partial class GitWorkspace(string root)
     }
 
     private sealed record Repository(string Path, string GitDirectory, string CommonDirectory);
+    internal sealed record RepositoryFolder(string Path, bool HasGitMarker, IReadOnlyList<string> Folders,
+        bool ContainsRepository, bool IsEmpty);
+    internal sealed class RepositoryDestinationConflictException(string message) : InvalidOperationException(message);
 }

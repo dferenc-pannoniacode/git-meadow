@@ -9,7 +9,7 @@
     <div class="sidebar-body">
         <div class="sidebar-heading">
             <h2>Repositories</h2>
-            <button type="button" class="button compact icon quiet" aria-label="Add repository" title="Add repository" disabled="@Busy" @onclick="@(Add)">+</button>
+            <button @ref="_addButton" type="button" class="button compact icon quiet" aria-label="Add repository" title="Add repository" disabled="@Busy" @onclick="@(() => Add.InvokeAsync(_addButton))">+</button>
         </div>
         <div class="repo-list">
             @foreach (var repo in Repositories)
@@ -59,10 +59,12 @@
     [Parameter] public bool Busy { get; set; }
     [Parameter] public EventCallback<string> Open { get; set; }
     [Parameter] public EventCallback<(string Repository, MouseEventArgs Pointer)> OpenContextMenu { get; set; }
-    [Parameter] public EventCallback Add { get; set; }
+    [Parameter] public EventCallback<ElementReference> Add { get; set; }
     [Parameter] public EventCallback AddReference { get; set; }
     [Parameter] public EventCallback<(string Repository, GitRef Reference, MouseEventArgs Pointer)> OpenReferenceContextMenu { get; set; }
     [Parameter] public EventCallback<string> Browse { get; set; }
+
+    private ElementReference _addButton;
 
     private IReadOnlyList<GitRef> Refs(string kind) => State?.Refs.Where(reference => reference.Kind == kind).ToArray() ?? [];
     private string DisplayName(string repo) => repo == "." ? Path.GetFileName(Path.TrimEndingDirectorySeparator(Root)) : repo;
