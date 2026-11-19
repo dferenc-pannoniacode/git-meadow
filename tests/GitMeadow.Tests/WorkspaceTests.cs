@@ -311,6 +311,70 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task Push_distinguishes_the_current_branch_from_a_same_named_tag()
+    {
+        var remote = Directory.CreateDirectory(Path.Combine(_git.Root, "remote.git")).FullName;
+        await _git.GitAsync("remote.git", "init", "--bare", "-b", "published");
+        var source = await _git.CreateAsync("source");
+        await _git.CommitFileAsync(source, "base.txt", "base\n", "Base");
+        await _git.GitAsync(source, "tag", "-a", "main", "-m", "Release");
+        var tag = (await _git.GitAsync(source, "rev-parse", "refs/tags/main")).Trim();
+        var tip = await _git.CommitFileAsync(source, "next.txt", "next\n", "Next");
+        await Workspace.ExecuteAsync(source, GitAction.AddRemote, "origin", remote);
+        await _git.GitAsync(source, "config", "branch.main.remote", "origin");
+        await _git.GitAsync(source, "config", "branch.main.merge", "refs/heads/published");
+
+        Assert.Equal("main", (await Workspace.ReadAsync(source)).Branch);
+
+        await Workspace.ExecuteAsync(source, GitAction.Push);
+
+        Assert.Equal($"refs/heads/published {tip}", (await _git.GitAsync(
+            "remote.git", "for-each-ref", "--format=%(refname) %(objectname)")).Trim());
+
+        await Workspace.ExecuteAsync(source, GitAction.Push, "origin", "refs/tags/main");
+
+        var refs = await _git.GitAsync("remote.git", "for-each-ref", "--format=%(refname) %(objectname)");
+        Assert.Equal([$"refs/heads/published {tip}", $"refs/tags/main {tag}"],
+            refs.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
+    public async Task Detached_tag_push_with_blank_remote_uses_the_configured_push_default()
+    {
+        var origin = Directory.CreateDirectory(Path.Combine(_git.Root, "origin.git")).FullName;
+        var fork = Directory.CreateDirectory(Path.Combine(_git.Root, "fork.git")).FullName;
+        await _git.GitAsync("origin.git", "init", "--bare", "-b", "main");
+        await _git.GitAsync("fork.git", "init", "--bare", "-b", "main");
+        var source = await _git.CreateAsync("source");
+        var tip = await _git.CommitFileAsync(source, "base.txt", "base\n", "Base");
+        await _git.GitAsync(source, "tag", "release");
+        await _git.GitAsync(source, "switch", "--detach");
+        await Workspace.ExecuteAsync(source, GitAction.AddRemote, "origin", origin);
+        await Workspace.ExecuteAsync(source, GitAction.AddRemote, "fork", fork);
+        await _git.GitAsync(source, "config", "remote.pushDefault", "fork");
+
+        await Workspace.ExecuteAsync(source, GitAction.Push, "", "refs/tags/release");
+
+        Assert.Equal(tip, (await _git.GitAsync("fork.git", "rev-parse", "refs/tags/release")).Trim());
+        Assert.Empty(await _git.GitAsync("origin.git", "for-each-ref"));
+    }
+
+    [Fact]
+    public async Task Pushing_a_missing_qualified_branch_does_not_publish_a_tag()
+    {
+        var remote = Directory.CreateDirectory(Path.Combine(_git.Root, "remote.git")).FullName;
+        await _git.GitAsync("remote.git", "init", "--bare", "-b", "main");
+        var source = await _git.CreateAsync("source");
+        await _git.CommitFileAsync(source, "base.txt", "base\n", "Base");
+        await _git.GitAsync(source, "tag", "refs/heads/release");
+        await Workspace.ExecuteAsync(source, GitAction.AddRemote, "origin", remote);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Workspace.ExecuteAsync(source, GitAction.Push, "origin", "refs/heads/release"));
+        Assert.Empty(await _git.GitAsync("remote.git", "for-each-ref"));
+    }
+
+    [Fact]
     public async Task Adding_submodule_stages_gitlink_and_preserves_submodule_revision()
     {
         const string submodulePath = "vendor/library";

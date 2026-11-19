@@ -8,7 +8,10 @@ public sealed record RepositoryState(
     IReadOnlyList<GitRemote> Remotes,
     IReadOnlyList<GitStash> Stashes,
     string? Operation,
-    bool CanAmend = true);
+    bool CanAmend = true)
+{
+    internal bool IsHeadDetached { get; init; }
+}
 
 public sealed record GitCommit(string Hash, IReadOnlyList<string> Parents, string Author, DateTimeOffset Date, string Subject);
 public sealed record GitChange(string Path, string? OriginalPath, char Index, char WorkTree);

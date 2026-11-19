@@ -24,7 +24,7 @@ public sealed partial class GitWorkspace
 
     private async Task<string> TransferAsync(Repository repo, GitAction action, string? remote, string? reference)
     {
-        var branch = (await TryRunAsync(repo.Path, ["symbolic-ref", "--quiet", "--short", "HEAD"])).Output.Trim();
+        var branch = (await RunAsync(repo.Path, ["branch", "--show-current"])).TrimEnd('\r', '\n');
         var remotes = Lines(await RunAsync(repo.Path, ["remote"]));
         if (action == GitAction.Fetch && string.IsNullOrWhiteSpace(remote) && string.IsNullOrWhiteSpace(reference))
         {
@@ -38,8 +38,7 @@ public sealed partial class GitWorkspace
         var tracked = branch.Length > 0 ? await ReadConfigValueAsync(repo, $"branch.{branch}.remote") : null;
         if (string.IsNullOrWhiteSpace(remote) && action == GitAction.Push)
         {
-            if (branch.Length > 0)
-                remote = await ReadConfigValueAsync(repo, $"branch.{branch}.pushRemote");
+            remote = branch.Length > 0 ? await ReadConfigValueAsync(repo, $"branch.{branch}.pushRemote") : null;
             remote ??= await ReadConfigValueAsync(repo, "remote.pushDefault");
         }
         if (string.IsNullOrWhiteSpace(remote))
@@ -93,9 +92,12 @@ public sealed partial class GitWorkspace
             }
         }
 
-        var tag = name.StartsWith(tagPrefix, StringComparison.Ordinal) ? name : tagPrefix + name;
-        if ((await TryRunAsync(repo.Path, ["show-ref", "--quiet", "--verify", tag])).Success)
-            return ["push", "--", remote, $"{tag}:{tag}"];
+        if (!name.StartsWith(branchPrefix, StringComparison.Ordinal))
+        {
+            var tag = name.StartsWith(tagPrefix, StringComparison.Ordinal) ? name : tagPrefix + name;
+            if ((await TryRunAsync(repo.Path, ["show-ref", "--quiet", "--verify", tag])).Success)
+                return ["push", "--", remote, $"{tag}:{tag}"];
+        }
         throw new InvalidOperationException("Choose an existing local branch or tag to push.");
     }
 

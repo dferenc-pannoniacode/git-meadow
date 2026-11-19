@@ -1,0 +1,48 @@
+@{
+    var branches = State.Refs.Where(reference => reference.Kind == "branch").ToArray();
+    var tags = State.Refs.Where(reference => reference.Kind == "tag").ToArray();
+    var hasCurrentBranch = !State.IsHeadDetached && branches.Any(branch => branch.Name == State.Branch);
+    var hasRefs = branches.Length > 0 || tags.Length > 0;
+}
+
+<OperationDialog Title="Push" ValueLabel="Remote" ExtraLabel="Local branch or tag"
+                 Value="" Extra="" ValueOptional="true" ExtraOptional="hasCurrentBranch"
+                 Busy="Busy" CanSubmit="@(State.Remotes.Count > 0 && hasRefs)" Error="@Error"
+                 Cancel="Cancel" Confirm="Confirm">
+    <ValueOptions>
+        <option value="">@(State.Remotes.Count > 0 ? "Default remote" : "No remotes configured")</option>
+        @foreach (var remote in State.Remotes)
+        {
+            <option @key="remote.Name" value="@remote.Name">@remote.Name</option>
+        }
+    </ValueOptions>
+    <ExtraOptions>
+        <option value="">@(hasCurrentBranch ? $"Current branch ({State.Branch})" : hasRefs ? "Choose a branch or tag" : "No local branches or tags")</option>
+        @if (branches.Length > 0)
+        {
+            <optgroup label="Local branches">
+                @foreach (var branch in branches)
+                {
+                    <option @key="branch.Name" value="@branch.Qualified()">@branch.Name</option>
+                }
+            </optgroup>
+        }
+        @if (tags.Length > 0)
+        {
+            <optgroup label="Tags">
+                @foreach (var tag in tags)
+                {
+                    <option @key="tag.Name" value="@tag.Qualified()">@tag.Name</option>
+                }
+            </optgroup>
+        }
+    </ExtraOptions>
+</OperationDialog>
+
+@code {
+    [Parameter, EditorRequired] public RepositoryState State { get; set; } = default!;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback Cancel { get; set; }
+    [Parameter] public EventCallback<(string? Value, string? Extra)> Confirm { get; set; }
+}

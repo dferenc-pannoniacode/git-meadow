@@ -175,6 +175,11 @@ else if (_repoForm is { } form)
                        Confirm="@(input => SubmitRepositoryAsync(form, input))"
                        CreateFolder="@(input => CreateRepositoryFolderAsync(form, input))" />
 }
+else if (_operation is { Action: GitAction.Push } push && _state is { } pushState)
+{
+    <PushDialog @key="push" State="pushState" Busy="_busy" Error="@_dialogError"
+                Cancel="CloseDialog" Confirm="SubmitOperationAsync" />
+}
 else if (_operation is { } op)
 {
     <OperationDialog @key="op" Title="@op.Title" ValueLabel="@op.ValueLabel" ExtraLabel="@op.ExtraLabel" Value="@op.Value" Extra="@op.Extra"

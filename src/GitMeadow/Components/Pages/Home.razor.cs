@@ -332,7 +332,7 @@ public partial class Home
     });
 
     private void ShowPull() => ShowOperation(new("Pull", GitAction.Pull, "Remote (optional)", "Branch (optional)", ValueOptional: true));
-    private void ShowPush() => ShowOperation(new("Push", GitAction.Push, "Remote (optional)", "Local branch or tag (optional)", ValueOptional: true));
+    private void ShowPush() => ShowOperation(new("Push", GitAction.Push));
     private void ShowRepositoryMenu(ElementReference anchor)
     {
         if (_busy || ModalOpen)

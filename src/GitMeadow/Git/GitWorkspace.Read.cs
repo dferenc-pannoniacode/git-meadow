@@ -10,7 +10,7 @@ public sealed partial class GitWorkspace
     public Task<RepositoryState> ReadAsync(string repo, string? revision = null, int commitLimit = 300) =>
         WithRepositoryAsync(repo, async repository =>
         {
-            var branch = TryRunAsync(repository.Path, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
+            var branch = RunAsync(repository.Path, ["branch", "--show-current"]);
             var commits = ReadCommitsAsync(repository, revision, commitLimit);
             var changes = ReadChangesAsync(repository);
             var refs = ReadRefsAsync(repository);
@@ -18,11 +18,14 @@ public sealed partial class GitWorkspace
             var stashes = ReadStashesAsync(repository);
             await Task.WhenAll(branch, commits, changes, refs, remotes, stashes);
 
-            var head = await branch;
+            var head = (await branch).TrimEnd('\r', '\n');
             var operation = Operation(repository);
-            return new RepositoryState(head.Success ? head.Output.TrimEnd('\r', '\n') : "(detached)",
+            return new RepositoryState(head.Length > 0 ? head : "(detached)",
                 await commits, await changes, await refs, await remotes, await stashes, operation,
-                await CanAmendAsync(repository, operation));
+                await CanAmendAsync(repository, operation))
+            {
+                IsHeadDetached = head.Length == 0
+            };
         });
 
     public Task<CommitDetails> CommitAsync(string repo, string hash) =>
