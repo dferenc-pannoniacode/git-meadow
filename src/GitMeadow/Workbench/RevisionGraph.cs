@@ -8,6 +8,7 @@ internal sealed record RevisionGraph(IReadOnlyDictionary<string, GraphRow> Rows,
 {
     public static RevisionGraph Build(IReadOnlyList<GitCommit> commits)
     {
+        var loaded = commits.Select(commit => commit.Hash).ToHashSet(StringComparer.Ordinal);
         var active = new List<(string Hash, int Color)>();
         var rows = new Dictionary<string, GraphRow>(StringComparer.Ordinal);
         var nextColor = 0;
@@ -30,7 +31,7 @@ internal sealed record RevisionGraph(IReadOnlyDictionary<string, GraphRow> Rows,
             for (var i = 0; i < commit.Parents.Count; i++)
             {
                 var parent = commit.Parents[i];
-                if (active.Exists(entry => entry.Hash == parent))
+                if (!loaded.Contains(parent) || active.Exists(entry => entry.Hash == parent))
                     continue;
 
                 active.Insert(insertion++, (parent, i == 0 ? current.Color : nextColor++));
@@ -49,7 +50,8 @@ internal sealed record RevisionGraph(IReadOnlyDictionary<string, GraphRow> Rows,
             foreach (var parent in commit.Parents)
             {
                 var to = active.FindIndex(entry => entry.Hash == parent);
-                lines.Add(new(lane, to, active[to].Color, true));
+                if (to >= 0)
+                    lines.Add(new(lane, to, active[to].Color, true));
             }
 
             rows.Add(commit.Hash, new(lane, current.Color, incoming, lines));

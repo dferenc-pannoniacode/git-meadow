@@ -1,4 +1,5 @@
 using GitMeadow.Git;
+using GitMeadow.Workbench;
 using Xunit;
 
 namespace GitMeadow.Tests;
@@ -48,6 +49,64 @@ public sealed class HistoryTests : IDisposable
         Assert.Equal([third, second], preview.Commits.Select(commit => commit.Hash));
         Assert.Equal([first], preview.Commits[1].Parents);
         Assert.Equal([third, second, first], expanded.Commits.Select(commit => commit.Hash));
+    }
+
+    [Fact]
+    public async Task History_uses_a_recent_window_and_displays_loaded_children_before_parents()
+    {
+        var repo = await _git.CreateAsync();
+        const string history = """
+            commit refs/heads/main
+            mark :1
+            committer Test <test@example.invalid> 1600000300 +0000
+            data <<END
+            Shared root
+            END
+
+            reset refs/tags/root
+            from :1
+
+            commit refs/heads/main
+            committer Test <test@example.invalid> 1600000100 +0000
+            data <<END
+            Backdated main tip
+            END
+
+            commit refs/heads/topic
+            committer Test <test@example.invalid> 1600000200 +0000
+            data <<END
+            Topic base
+            END
+            from :1
+
+            commit refs/heads/topic
+            committer Test <test@example.invalid> 1600000400 +0000
+            data <<END
+            Topic tip
+            END
+
+            done
+            """;
+        (await GitProcess.RunAsync(Path.Combine(_git.Root, repo), ["fast-import", "--quiet"],
+            history.ReplaceLineEndings("\n") + "\n")).RequireSuccess();
+
+        var preview = await Workspace.ReadAsync(repo, commitLimit: 2);
+        var expanded = await Workspace.ReadAsync(repo, commitLimit: 4);
+
+        Assert.Equal(["Topic tip", "Shared root"], preview.Commits.Select(commit => commit.Subject));
+        Assert.Equal(["Topic tip", "Topic base", "Backdated main tip", "Shared root"],
+            expanded.Commits.Select(commit => commit.Subject));
+        Assert.Equal([preview.Commits[1].Hash], expanded.Commits[2].Parents);
+
+        var tip = preview.Commits[0].Hash;
+        var previewGraph = RevisionGraph.Build(preview.Commits);
+        Assert.Empty(previewGraph.Rows[tip].Lines);
+        Assert.Empty(previewGraph.Rows[preview.Commits[1].Hash].Lines);
+
+        var expandedGraph = RevisionGraph.Build(expanded.Commits);
+        var topicBase = expandedGraph.Rows[expanded.Commits[1].Hash];
+        Assert.True(topicBase.Incoming);
+        Assert.Equal(topicBase.Lane, Assert.Single(expandedGraph.Rows[tip].Lines).To);
     }
 
     [Fact]

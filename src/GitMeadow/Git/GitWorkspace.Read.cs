@@ -72,9 +72,10 @@ public sealed partial class GitWorkspace
 
     private static async Task<IReadOnlyList<GitCommit>> ReadCommitsAsync(Repository repository, string? revision, int commitLimit)
     {
+        // Without a commit-graph index, --topo-order can walk the entire history before honoring -n.
         var arguments = new List<string>
         {
-            "log", "--topo-order", "-n", Math.Clamp(commitLimit, 1, 5000).ToString(CultureInfo.InvariantCulture),
+            "log", "-n", Math.Clamp(commitLimit, 1, 5000).ToString(CultureInfo.InvariantCulture),
             "-z", "--no-notes", "--format=%H%x00%P%x00%an%x00%aI%x00%s"
         };
         if (!string.IsNullOrWhiteSpace(revision))
@@ -95,7 +96,57 @@ public sealed partial class GitWorkspace
                 fields[index + 1].Split(' ', StringSplitOptions.RemoveEmptyEntries),
                 fields[index + 2], ParseDate(fields[index + 3]), fields[index + 4]));
         }
-        return commits;
+        return OrderLoadedCommits(commits);
+    }
+
+    private static IReadOnlyList<GitCommit> OrderLoadedCommits(List<GitCommit> commits)
+    {
+        var positions = new Dictionary<string, int>(commits.Count, StringComparer.Ordinal);
+        for (var index = 0; index < commits.Count; index++)
+            positions.Add(commits[index].Hash, index);
+
+        // A ref can point directly to a parent whose timestamp is newer than its child's.
+        // Keep Git's order wherever possible while placing visible children before their parents.
+        var remainingChildren = new int[commits.Count];
+        var needsSorting = false;
+        for (var index = 0; index < commits.Count; index++)
+        {
+            foreach (var parent in commits[index].Parents)
+            {
+                if (!positions.TryGetValue(parent, out var parentIndex))
+                    continue;
+
+                remainingChildren[parentIndex]++;
+                needsSorting |= parentIndex <= index;
+            }
+        }
+
+        if (!needsSorting)
+            return commits;
+
+        var ready = new PriorityQueue<int, int>();
+        for (var index = 0; index < commits.Count; index++)
+        {
+            if (remainingChildren[index] == 0)
+                ready.Enqueue(index, index);
+        }
+
+        var ordered = new List<GitCommit>(commits.Count);
+        while (ready.TryDequeue(out var index, out _))
+        {
+            var commit = commits[index];
+            ordered.Add(commit);
+            foreach (var parent in commit.Parents)
+            {
+                if (positions.TryGetValue(parent, out var parentIndex) && --remainingChildren[parentIndex] == 0)
+                    ready.Enqueue(parentIndex, parentIndex);
+            }
+        }
+
+        if (ordered.Count != commits.Count)
+            throw new InvalidOperationException("Git returned a cycle in the loaded commit history.");
+
+        return ordered;
     }
 
     private static async Task<IReadOnlyList<GitChange>> ReadChangesAsync(Repository repository)
