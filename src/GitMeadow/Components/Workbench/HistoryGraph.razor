@@ -1,0 +1,103 @@
+<section class="panel history-panel" aria-label="Commit history">
+    <header class="panel-heading history-heading">
+        <div><h2>Commit history</h2><p>@Commits.Count commit@(Commits.Count == 1 ? "" : "s") loaded</p></div>
+        <label class="search"><span aria-hidden="true">⌕</span><input aria-label="Search commits" placeholder="Search commits…" @bind="_query" @bind:event="oninput" /></label>
+    </header>
+    @if (Commits.Count == 0)
+    {
+        <div class="empty">This repository has no commits in the selected history.</div>
+    }
+    else
+    {
+        <div class="history-scroll">
+            <table class="history-table" style="--graph-width:@(_graph.Width)px">
+                <colgroup><col class="graph-column" /><col /><col class="author-column" /><col class="date-column" /><col class="hash-column" /></colgroup>
+                <thead><tr><th scope="col">Graph</th><th scope="col">Commit</th><th scope="col">Author</th><th scope="col">Date</th><th scope="col">Hash</th></tr></thead>
+                <tbody>
+                    @foreach (var commit in VisibleCommits)
+                    {
+                        var row = _graph.Rows[commit.Hash];
+                        var refs = Refs.Where(reference => reference.Hash == commit.Hash);
+                        <tr @key="commit.Hash" class="@(Selected == commit.Hash ? "selected" : null)"
+                            @oncontextmenu="@(pointer => OpenContextMenu.InvokeAsync((commit.Hash, pointer)))" @oncontextmenu:preventDefault>
+                            <td class="graph-cell">
+                                <svg aria-hidden="true" width="@_graph.Width" height="44" viewBox="0 0 @_graph.Width 44">
+                                    @if (string.IsNullOrWhiteSpace(_query))
+                                    {
+                                        @if (row.Incoming)
+                                        {
+                                            <path class="@Color(row.Color)" d="M @X(row.Lane) 0 V 22" />
+                                        }
+                                        @foreach (var line in row.Lines)
+                                        {
+                                            <path class="@Color(line.Color)" d="@PathFor(line)" />
+                                        }
+                                    }
+                                    <circle class="@Color(row.Color)" cx="@X(row.Lane)" cy="22" r="4.5" />
+                                </svg>
+                            </td>
+                            <td>
+                                <div class="commit-subject">
+                                    <button type="button" class="subject" aria-pressed="@(Selected == commit.Hash)" @onclick="@(() => Select.InvokeAsync(commit.Hash))">
+                                        <span>@commit.Subject</span>
+                                        @foreach (var reference in refs)
+                                        {
+                                            <small class="ref-chip @reference.Kind" title="@reference.Name">@reference.Name</small>
+                                        }
+                                    </button>
+                                    <button type="button" class="commit-menu-trigger" aria-label="@($"Actions for {commit.Subject}")" disabled="@Busy"
+                                            @onclick="@(pointer => OpenContextMenu.InvokeAsync((commit.Hash, pointer)))">⋯</button>
+                                </div>
+                            </td>
+                            <td class="commit-author" title="@commit.Author">@commit.Author</td>
+                            <td class="commit-date"><time datetime="@commit.Date.ToString("O")">@commit.Date.ToString("MMM d, yyyy")</time></td>
+                            <td class="commit-hash">@commit.Hash[..Math.Min(8, commit.Hash.Length)]</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (!VisibleCommits.Any())
+            {
+                <div class="empty small">No commits match “@_query”.</div>
+            }
+        </div>
+        @if (MoreAvailable)
+        {
+            <div class="history-footer"><button type="button" class="button quiet" disabled="@Busy" @onclick="More">Load older commits</button></div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<GitCommit> Commits { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<GitRef> Refs { get; set; } = [];
+    [Parameter] public string? Selected { get; set; }
+    [Parameter] public EventCallback<string> Select { get; set; }
+    [Parameter] public EventCallback<(string Hash, MouseEventArgs Pointer)> OpenContextMenu { get; set; }
+    [Parameter] public bool MoreAvailable { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback More { get; set; }
+
+    private string _query = "";
+    private RevisionGraph _graph = RevisionGraph.Build([]);
+
+    protected override void OnParametersSet() => _graph = RevisionGraph.Build(Commits);
+
+    private IEnumerable<GitCommit> VisibleCommits => string.IsNullOrWhiteSpace(_query)
+        ? Commits
+        : Commits.Where(commit => Matches(commit.Subject) || Matches(commit.Author) || Matches(commit.Hash)
+            || Refs.Any(reference => reference.Hash == commit.Hash && Matches(reference.Name)));
+
+    private bool Matches(string value) => value.Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase);
+    private static int X(int lane) => 14 + 16 * lane;
+    private static string Color(int color) => $"lane lane-{color % 6}";
+
+    private static string PathFor(GraphLine line)
+    {
+        var from = X(line.From);
+        var to = X(line.To);
+        return line.Junction
+            ? $"M {from} 22 C {from} 35 {to} 32 {to} 44"
+            : $"M {from} 0 C {from} 24 {to} 18 {to} 44";
+    }
+}

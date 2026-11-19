@@ -1,0 +1,126 @@
+<div class="split changes-split">
+    <section class="panel changes-panel" aria-label="Working tree">
+        <header class="panel-heading">
+            <div><h2>Working tree</h2><p>@State.Changes.Count changed file@(State.Changes.Count == 1 ? "" : "s")</p></div>
+            <button type="button" class="button primary" disabled="@(Busy || !Staged.Any() || Conflicts.Any() || State.Operation is not null)" @onclick="@(() => Ask(new("Commit", GitAction.Commit, "Commit message", Multiline: true)))">Commit</button>
+        </header>
+        @if (State.Operation is not null)
+        {
+            <div class="operation-banner">
+                <strong>@State.Operation in progress</strong>
+                @if (State.Operation != "bisect")
+                {
+                    <div class="actions">
+                        <button class="button" disabled="@(Busy || Conflicts.Any())" @onclick="@(() => Run(new("Continue", GitAction.Continue)))">Continue</button>
+                        @if (State.Operation is "rebase" or "cherry-pick" or "revert")
+                        {
+                            <button class="button" disabled="@Busy" @onclick="@(() => Ask(new("Skip commit", GitAction.Skip, Destructive: true)))">Skip commit</button>
+                        }
+                        <button class="button danger-quiet" disabled="@Busy" @onclick="@(() => Ask(new("Abort operation", GitAction.Abort, Destructive: true)))">Abort</button>
+                    </div>
+                }
+                else
+                {
+                    <button class="button" disabled="@Busy" @onclick="@(() => Run(new("End bisect", GitAction.BisectReset)))">End bisect</button>
+                }
+            </div>
+        }
+        @if (Conflicts.Any())
+        {
+            <div class="change-section danger-section"><h3>Conflicts <span>@Conflicts.Count()</span></h3></div>
+            @foreach (var change in Conflicts) { @ChangeRow(change, false, true) }
+        }
+        <div class="change-section">
+            <h3>Staged <span>@Staged.Count()</span></h3>
+            <button class="button compact quiet" disabled="@(Busy || !Staged.Any() || State.Operation is not null)" @onclick="@(() => Run(new("Unstage all", GitAction.UnstageAll)))">Unstage all</button>
+        </div>
+        @foreach (var change in Staged) { @ChangeRow(change, true, false) }
+        @if (!Staged.Any()) { <p class="list-empty">Nothing staged</p> }
+        <div class="change-section">
+            <h3>Unstaged <span>@Unstaged.Count()</span></h3>
+            <button class="button compact quiet" disabled="@(Busy || !Unstaged.Any() || Conflicts.Any())" @onclick="@(() => Run(new("Stage all", GitAction.StageAll)))">Stage all</button>
+        </div>
+        @foreach (var change in Unstaged) { @ChangeRow(change, false, false) }
+        @if (!Unstaged.Any()) { <p class="list-empty">No unstaged changes</p> }
+        <div class="changes-footer">
+            <button class="button quiet" disabled="@(Busy || State.Commits.Count == 0 || Conflicts.Any() || !State.CanAmend)" @onclick="@(() => Ask(new("Amend last commit", GitAction.Amend, "New message (optional)", Destructive: true, Multiline: true, ValueOptional: true)))">Amend last commit</button>
+        </div>
+    </section>
+
+    <section class="panel inspection change-detail" aria-label="Working tree diff">
+        <header class="panel-heading">
+            <div><h2>@(Selected?.Change.Path ?? "Working tree diff")</h2><p>@(Selected is null ? "Select a file to review its changes" : IsConflict(Selected.Change) ? "Conflicted file" : Selected.Staged ? "Staged changes" : "Unstaged changes")</p></div>
+            @if (Selected is { Staged: false } item)
+            {
+                @if (IsConflict(item.Change))
+                {
+                    <div class="actions">
+                        <button class="button compact" disabled="@Busy" @onclick="@(() => Ask(new("Use ours", GitAction.ResolveOurs, Value: item.Change.Path, Destructive: true)))">Use ours</button>
+                        <button class="button compact" disabled="@Busy" @onclick="@(() => Ask(new("Use theirs", GitAction.ResolveTheirs, Value: item.Change.Path, Destructive: true)))">Use theirs</button>
+                        <button class="button compact primary" disabled="@(Busy || DiffError is not null)" @onclick="@(() => Ask(new("Save resolution", GitAction.WriteConflict, ExtraLabel: "Resolved file contents", Value: item.Change.Path, Extra: Diff, ExtraMultiline: true)))">Edit resolution</button>
+                    </div>
+                }
+                else
+                {
+                    <button class="button compact danger-quiet" disabled="@Busy" @onclick="@(() => Ask(new("Discard changes", GitAction.Discard, Value: item.Change.Path, Destructive: true)))">Discard</button>
+                }
+            }
+        </header>
+        @if (Selected is { } selected)
+        {
+            @if (DiffError is not null) { <div class="empty small" role="status">@DiffError</div> }
+            @if (DiffError is null || Diff is not null)
+            {
+                <DiffText Text="@Diff" Highlight="@(!IsConflict(selected.Change))" />
+            }
+            @if (Hunks.Count > 0)
+            {
+                <div class="hunks">
+                    @foreach (var hunk in Hunks)
+                    {
+                        <HunkEditor @key="(selected.Change.Path, selected.Staged, hunk.Id)" Hunk="hunk" Path="@selected.Change.Path"
+                                    Staged="selected.Staged" Busy="Busy" Apply="ApplyHunk" />
+                    }
+                </div>
+            }
+        }
+        else { <div class="empty">@(State.Changes.Count == 0 ? "Your working tree is clean." : "Select a staged or unstaged file.")</div> }
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RepositoryState State { get; set; } = default!;
+    [Parameter] public ChangeSelection? Selected { get; set; }
+    [Parameter] public string? Diff { get; set; }
+    [Parameter] public string? DiffError { get; set; }
+    [Parameter] public IReadOnlyList<PatchHunk> Hunks { get; set; } = [];
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<ChangeSelection> Select { get; set; }
+    [Parameter] public EventCallback<Operation> Execute { get; set; }
+    [Parameter] public EventCallback<Operation> Prompt { get; set; }
+    [Parameter] public EventCallback<HunkSelection> ApplyHunk { get; set; }
+
+    private IEnumerable<GitChange> Conflicts => State.Changes.Where(IsConflict);
+    private IEnumerable<GitChange> Staged => State.Changes.Where(IsStaged);
+    private IEnumerable<GitChange> Unstaged => State.Changes.Where(IsUnstaged);
+
+    public static bool IsConflict(GitChange change) => change.Index == 'U' || change.WorkTree == 'U'
+        || (change.Index, change.WorkTree) is ('A', 'A') or ('D', 'D');
+    public static bool IsStaged(GitChange change) => !IsConflict(change) && change.Index is not (' ' or '.' or '?' or '!');
+    public static bool IsUnstaged(GitChange change) => !IsConflict(change) && (change.Index == '?' || change.WorkTree is not (' ' or '.' or '!'));
+
+    private Task Run(Operation operation) => Execute.InvokeAsync(operation);
+    private Task Ask(Operation operation) => Prompt.InvokeAsync(operation);
+
+    private RenderFragment ChangeRow(GitChange change, bool staged, bool conflict) => @<div class="change-row @(Selected?.Change.Path == change.Path && Selected.Staged == staged ? "selected" : null)">
+        <button type="button" class="change-file" title="@change.Path" disabled="@Busy" @onclick="@(() => Select.InvokeAsync(new(change, staged)))">
+            <span class="file-status @(conflict ? "conflict" : null)">@Status(change, staged, conflict)</span>
+            <span>@change.Path</span>
+        </button>
+        <button type="button" class="button compact quiet icon" title="@(staged ? "Unstage" : "Stage")" aria-label="@(staged ? "Unstage " + change.Path : "Stage " + change.Path)" disabled="@Busy"
+                @onclick="@(() => Run(new(staged ? "Unstage file" : "Stage file", staged ? GitAction.Unstage : GitAction.Stage, Value: change.Path)))">@(staged ? "−" : "+")</button>
+    </div>;
+
+    private static char Status(GitChange change, bool staged, bool conflict)
+        => conflict ? 'U' : staged ? change.Index : change.Index == '?' ? '?' : change.WorkTree;
+}

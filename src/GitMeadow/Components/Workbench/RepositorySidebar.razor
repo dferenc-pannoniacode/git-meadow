@@ -1,0 +1,69 @@
+@using System.Reflection
+
+<aside class="sidebar" aria-label="Repository navigation">
+    <a class="brand" href="./">
+        <span class="brand-mark" aria-hidden="true"><span></span><i></i><b></b></span>
+        <span>Git Meadow<small>Version @AppVersion</small></span>
+    </a>
+
+    <div class="sidebar-body">
+        <div class="sidebar-heading">
+            <h2>Repositories</h2>
+            <button type="button" class="button compact icon quiet" aria-label="Add repository" title="Add repository" disabled="@Busy" @onclick="@(Add)">+</button>
+        </div>
+        <div class="repo-list">
+            @foreach (var repo in Repositories)
+            {
+                <button type="button" class="repo-nav @(Current == repo ? "current" : null)" title="@repo"
+                        aria-pressed="@(Current == repo)" disabled="@Busy" @key="repo"
+                        @onclick="@(() => Open.InvokeAsync(repo))"
+                        @oncontextmenu="@(pointer => OpenContextMenu.InvokeAsync((repo, pointer)))" @oncontextmenu:preventDefault>
+                    <span class="small-box" aria-hidden="true">▣</span><span>@DisplayName(repo)</span>
+                    @if (Current == repo) { <span class="active-dot" aria-hidden="true"></span> }
+                </button>
+            }
+            @if (Repositories.Count == 0) { <p class="sidebar-empty">No repositories yet</p> }
+        </div>
+
+        @if (State is not null && Current is { } repository)
+        {
+            <div class="sidebar-heading refs-heading">
+                <h2>References</h2>
+                <button type="button" class="button compact icon quiet" aria-label="Create branch or tag" title="Create branch or tag" disabled="@Busy" @onclick="@(AddReference)">+</button>
+            </div>
+            <button type="button" class="nav-ref all-refs @(Revision is null ? "current" : null)" disabled="@Busy" @onclick="@(() => Browse.InvokeAsync(null))"><span aria-hidden="true">◎</span><span>All references</span></button>
+            <RefGroup Title="Branches" Symbol="⑂" Items="@Refs("branch")" Current="@State.Branch" Repository="@repository"
+                      OpenContextMenu="OpenReferenceContextMenu" Browse="Browse" Busy="Busy" InitiallyOpen="true" />
+            <RefGroup Title="Remote branches" Symbol="↗" Items="@Refs("remote")" Repository="@repository"
+                      OpenContextMenu="OpenReferenceContextMenu" Browse="Browse" Busy="Busy" />
+            <RefGroup Title="Tags" Symbol="◇" Items="@Refs("tag")" Repository="@repository"
+                      OpenContextMenu="OpenReferenceContextMenu" Browse="Browse" Busy="Busy" InitiallyOpen="true" />
+        }
+    </div>
+
+    <div class="sidebar-foot">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>Local workspace<small title="@Root">@Root</small></span>
+    </div>
+</aside>
+
+@code {
+    private static readonly string AppVersion = typeof(RepositorySidebar).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
+
+    [Parameter] public IReadOnlyList<string> Repositories { get; set; } = [];
+    [Parameter] public string? Current { get; set; }
+    [Parameter] public string? Revision { get; set; }
+    [Parameter] public string Root { get; set; } = "";
+    [Parameter] public RepositoryState? State { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<string> Open { get; set; }
+    [Parameter] public EventCallback<(string Repository, MouseEventArgs Pointer)> OpenContextMenu { get; set; }
+    [Parameter] public EventCallback Add { get; set; }
+    [Parameter] public EventCallback AddReference { get; set; }
+    [Parameter] public EventCallback<(string Repository, GitRef Reference, MouseEventArgs Pointer)> OpenReferenceContextMenu { get; set; }
+    [Parameter] public EventCallback<string> Browse { get; set; }
+
+    private IReadOnlyList<GitRef> Refs(string kind) => State?.Refs.Where(reference => reference.Kind == kind).ToArray() ?? [];
+    private string DisplayName(string repo) => repo == "." ? Path.GetFileName(Path.TrimEndingDirectorySeparator(Root)) : repo;
+}

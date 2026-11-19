@@ -1,0 +1,59 @@
+<div class="tool-grid">
+    <section class="panel">
+        <header class="panel-heading"><div><h2>Remotes</h2><p>Synchronize branches and tags</p></div><button type="button" class="button primary" disabled="@Busy" @onclick="@(() => Ask(new("Add remote", GitAction.AddRemote, "Name", "Remote URL", ExtraOptional: false)))">Add remote</button></header>
+        @if (State.Remotes.Count == 0) { <div class="empty small">No remotes configured.</div> }
+        @foreach (var remote in State.Remotes)
+        {
+            <div class="tool-row" @key="remote.Name"><div><strong>@remote.Name</strong><small title="@remote.FetchUrl">@remote.FetchUrl</small></div>
+                <div class="actions">
+                    <button class="button compact" disabled="@Busy" @onclick="@(() => Run(new("Fetch", GitAction.Fetch, Value: remote.Name)))">Fetch</button>
+                    <button class="button compact" disabled="@Busy" @onclick="@(() => Ask(new("Edit remote", GitAction.SetRemote, ExtraLabel: "Remote URL", Value: remote.Name, Extra: remote.FetchUrl, ExtraOptional: false)))">Edit</button>
+                    <button class="button compact danger-quiet" disabled="@Busy" @onclick="@(() => Ask(new("Remove remote", GitAction.RemoveRemote, Value: remote.Name, Destructive: true)))">Remove</button>
+                </div>
+            </div>
+        }
+    </section>
+
+    <section class="panel">
+        <header class="panel-heading"><div><h2>Stashes</h2><p>Shelve work in progress</p></div><button class="button primary" disabled="@Busy" @onclick="@(() => Ask(new("Create stash", GitAction.Stash, "Message (optional)", ValueOptional: true)))">Create stash</button></header>
+        @if (State.Stashes.Count == 0) { <div class="empty small">No stashes saved.</div> }
+        @foreach (var stash in State.Stashes)
+        {
+            <div class="tool-row" @key="stash.Name"><div><strong>@stash.Subject</strong><small class="mono">@stash.Name</small></div>
+                <div class="actions">
+                    <button class="button compact" disabled="@Busy" @onclick="@(() => View.InvokeAsync(new(GitView.StashPatch, stash.Hash)))">View</button>
+                    <button class="button compact" disabled="@Busy" @onclick="@(() => Run(new("Apply stash", GitAction.ApplyStash, Value: stash.Name, Extra: stash.Hash)))">Apply</button>
+                    <button class="button compact" disabled="@Busy" @onclick="@(() => Run(new("Pop stash", GitAction.PopStash, Value: stash.Name, Extra: stash.Hash)))">Pop</button>
+                    <button class="button compact danger-quiet" disabled="@Busy" @onclick="@(() => Ask(new("Drop stash", GitAction.DropStash, Value: stash.Name, Extra: stash.Hash, Destructive: true)))">Drop</button>
+                </div>
+            </div>
+        }
+    </section>
+
+    <section class="panel">
+        <header class="panel-heading"><div><h2>Bisect</h2><p>Find the commit that introduced a change</p></div></header>
+        <div class="tool-actions">
+            @if (State.Operation == "bisect")
+            {
+                <button class="button" disabled="@Busy" @onclick="@(() => Run(new("Mark good", GitAction.BisectGood)))">Mark good</button>
+                <button class="button" disabled="@Busy" @onclick="@(() => Run(new("Mark bad", GitAction.BisectBad)))">Mark bad</button>
+                <button class="button" disabled="@Busy" @onclick="@(() => Run(new("End bisect", GitAction.BisectReset)))">End bisect</button>
+            }
+            else
+            {
+                <button class="button" disabled="@Busy" @onclick="@(() => Ask(new("Start bisect", GitAction.BisectStart, "Known bad revision", "Known good revision", Value: "HEAD", ExtraOptional: false)))">Start bisect</button>
+            }
+        </div>
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public RepositoryState State { get; set; } = default!;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<Operation> Prompt { get; set; }
+    [Parameter] public EventCallback<Operation> Execute { get; set; }
+    [Parameter] public EventCallback<FileQuery> View { get; set; }
+
+    private Task Ask(Operation operation) => Prompt.InvokeAsync(operation);
+    private Task Run(Operation operation) => Execute.InvokeAsync(operation);
+}

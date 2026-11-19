@@ -1,0 +1,31 @@
+<section class="panel inspection" aria-label="Commit details">
+    <header class="panel-heading">
+        <div><h2>Commit details</h2>@if (Details is not null) { <p class="mono" title="@Details.Hash">@Details.Hash[..Math.Min(12, Details.Hash.Length)]</p> }</div>
+    </header>
+    @if (Details is null)
+    {
+        <div class="empty">Choose a commit to inspect its changes.</div>
+    }
+    else
+    {
+        <div class="commit-summary">
+            <p class="commit-message">@Details.Message</p>
+            <div><strong>@Details.Author</strong><span title="@Details.Email">@Details.Date.ToString("MMM d, yyyy · HH:mm zzz")</span></div>
+        </div>
+        <details class="commit-files">
+            <summary>@Details.Files.Count changed file@(Details.Files.Count == 1 ? "" : "s")</summary>
+            @foreach (var file in Details.Files)
+            {
+                <button type="button" class="line-item" disabled="@Busy" @onclick="@(() => InspectFile.InvokeAsync(new(GitView.File, Details.Hash, file)))"><span aria-hidden="true">▤</span>@file</button>
+            }
+        </details>
+        @if (Details.DiffOmitted) { <div class="empty small">This commit’s diff exceeds the display limit.</div> }
+        else { <DiffText Text="@Details.Diff" /> }
+    }
+</section>
+
+@code {
+    [Parameter] public CommitDetails? Details { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<FileQuery> InspectFile { get; set; }
+}

@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/GitMeadow/GitMeadow.csproj" />
+  <Project Path="tests/GitMeadow.Tests/GitMeadow.Tests.csproj" />
+</Solution>

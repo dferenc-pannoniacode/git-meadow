@@ -1,0 +1,15 @@
+services:
+  git-meadow:
+    build: .
+    ports:
+      - "127.0.0.1:5080:8080"
+    volumes:
+      - workspace:/workspaces
+      - git-home:/home/app
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  workspace: {}
+  git-home: {}

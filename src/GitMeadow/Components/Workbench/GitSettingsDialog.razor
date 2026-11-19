@@ -1,0 +1,70 @@
+@inject GitSettings Settings
+
+<OverlayPanel TitleId="git-settings-title" Busy="_busy" Cancel="Cancel">
+    <header>
+        <h2 id="git-settings-title">Git settings</h2>
+        <button type="button" class="button icon quiet" aria-label="Close" disabled="@_busy" @onclick="@(Cancel)">×</button>
+    </header>
+    <div class="settings-nav" role="group" aria-label="Git settings sections">
+        <button type="button" class="button" aria-pressed="@(Pressed(Section.Identity))" disabled="@_busy" @onclick="@(() => SelectAsync(Section.Identity))">Commit identity</button>
+        <button type="button" class="button" aria-pressed="@(Pressed(Section.Ssh))" disabled="@_busy" @onclick="@(() => SelectAsync(Section.Ssh))">SSH</button>
+        <button type="button" class="button" aria-pressed="@(Pressed(Section.Https))" disabled="@_busy" @onclick="@(() => SelectAsync(Section.Https))">HTTPS</button>
+    </div>
+
+    @if (_section == Section.Identity)
+    {
+        <form @onsubmit="SaveIdentityAsync" @onsubmit:preventDefault>
+            <p class="dialog-description">Git uses this identity for commits in repositories that have no identity of their own.</p>
+            <label>Name <input @bind="_name" @bind:event="oninput" maxlength="256" autocomplete="name" required disabled="@_busy" /></label>
+            <label>Email <input type="email" @bind="_email" @bind:event="oninput" maxlength="320" autocomplete="email" required disabled="@_busy" /></label>
+            <footer><button type="submit" class="button primary" disabled="@_busy">Save identity</button></footer>
+        </form>
+    }
+    else if (_section == Section.Ssh)
+    {
+        <div class="settings-ssh">
+            @if (_publicKey is not null)
+            {
+                <label>Public key <textarea class="settings-key" rows="3" readonly>@_publicKey</textarea></label>
+                <p class="dialog-description">Copy this key to your Git host before using an SSH remote.</p>
+            }
+            else
+            {
+                <p class="dialog-description">Generate an Ed25519 key for unattended Git operations. The private key is saved on disk without a passphrase.</p>
+                <div><button type="button" class="button" disabled="@_busy" @onclick="GenerateSshKeyAsync">Generate SSH key</button></div>
+            }
+        </div>
+        <form @onsubmit="SaveSshHostKeyAsync" @onsubmit:preventDefault>
+            <label>SSH host key
+                <textarea class="settings-key" rows="3" @bind="_hostKey" @bind:event="oninput" maxlength="16384" required disabled="@_busy"
+                          aria-describedby="ssh-host-key-help" placeholder="git.example.com ssh-ed25519 AAAA…"></textarea>
+            </label>
+            <p class="dialog-description" id="ssh-host-key-help">Paste one known_hosts line from a trusted source. Verify the key with your Git host before saving it.</p>
+            <footer><button type="submit" class="button primary" disabled="@_busy">Save host key</button></footer>
+        </form>
+    }
+    else
+    {
+        <form @onsubmit="SaveHttpsCredentialAsync" @onsubmit:preventDefault>
+            <p class="dialog-description">Use a token with access to the repositories you need. Git saves the token in plaintext on disk.</p>
+            <label>HTTPS origin <input type="url" @bind="_origin" @bind:event="oninput" maxlength="512" placeholder="https://git.example.com" required disabled="@_busy" /></label>
+            <label>Username <input @bind="_username" @bind:event="oninput" maxlength="256" autocomplete="username" required disabled="@_busy" /></label>
+            <label>Access token
+                <input @key="_tokenField" type="password" @oninput="ReadToken" maxlength="4096" autocomplete="new-password" required disabled="@_busy" />
+            </label>
+            <footer>
+                <button type="button" class="button danger-quiet" disabled="@_busy" @onclick="RemoveHttpsCredentialAsync">Remove saved token</button>
+                <button type="submit" class="button primary" disabled="@_busy">Save token</button>
+            </footer>
+        </form>
+    }
+
+    @if (_error is not null)
+    {
+        <p class="danger-note settings-feedback" role="alert">@_error</p>
+    }
+    @if (_status is not null || _busy)
+    {
+        <p class="dialog-description settings-feedback" role="status">@(_busy ? "Working…" : _status)</p>
+    }
+</OverlayPanel>

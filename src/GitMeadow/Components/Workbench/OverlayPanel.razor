@@ -1,0 +1,26 @@
+<div class="overlay">
+    <section @ref="_panel" class="dialog @Class" role="dialog" aria-modal="true"
+             aria-labelledby="@TitleId" tabindex="-1" @onkeydown="HandleKeyAsync">
+        @ChildContent
+    </section>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string TitleId { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback Cancel { get; set; }
+    [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
+
+    private ElementReference _panel;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await _panel.FocusAsync(preventScroll: true);
+    }
+
+    private Task HandleKeyAsync(KeyboardEventArgs args) => args.Key == "Escape" && !Busy
+        ? Cancel.InvokeAsync()
+        : Task.CompletedTask;
+}

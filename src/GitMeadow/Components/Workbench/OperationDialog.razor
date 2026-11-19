@@ -1,0 +1,66 @@
+<OverlayPanel TitleId="operation-title" Busy="Busy" Cancel="Cancel">
+        <header><h2 id="operation-title">@Title</h2><button type="button" class="button icon quiet" aria-label="Close" @onclick="@(Cancel)" disabled="@Busy">×</button></header>
+        <form @onsubmit="Submit" @onsubmit:preventDefault>
+            @if (Description is not null) { <p class="dialog-description">@Description</p> }
+            @if (Destructive)
+            {
+                <p class="danger-note">This operation can permanently remove changes or rewrite repository history.</p>
+            }
+            @if (ValueLabel is not null)
+            {
+                <label>@ValueLabel
+                    @if (Multiline)
+                    {
+                        <textarea rows="8" @bind="_value" required="@(!ValueOptional)" disabled="@Busy"></textarea>
+                    }
+                    else
+                    {
+                        <input @bind="_value" required="@(!ValueOptional)" disabled="@Busy" autocomplete="off" />
+                    }
+                </label>
+            }
+            @if (ExtraLabel is not null)
+            {
+                <label>@ExtraLabel
+                    @if (ExtraMultiline)
+                    {
+                        <textarea rows="12" @bind="_extra" required="@(!ExtraOptional)" disabled="@Busy"></textarea>
+                    }
+                    else
+                    {
+                        <input @bind="_extra" required="@(!ExtraOptional)" disabled="@Busy" autocomplete="off" />
+                    }
+                </label>
+            }
+            @if (!string.IsNullOrWhiteSpace(Error)) { <p role="alert" class="danger-note">@Error</p> }
+            <footer>
+                <button type="button" class="button" @onclick="@(Cancel)" disabled="@Busy">Cancel</button>
+                <button type="submit" class="button @(Destructive ? "danger" : "primary")" disabled="@Busy">@(Busy ? "Running…" : Title)</button>
+            </footer>
+        </form>
+</OverlayPanel>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? ValueLabel { get; set; }
+    [Parameter] public string? ExtraLabel { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public string? Extra { get; set; }
+    [Parameter] public bool ValueOptional { get; set; }
+    [Parameter] public bool ExtraOptional { get; set; }
+    [Parameter] public bool Multiline { get; set; }
+    [Parameter] public bool ExtraMultiline { get; set; }
+    [Parameter] public bool Destructive { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public EventCallback Cancel { get; set; }
+    [Parameter] public EventCallback<(string? Value, string? Extra)> Confirm { get; set; }
+
+    private string? _value;
+    private string? _extra;
+
+    protected override void OnInitialized() => (_value, _extra) = (Value, Extra);
+    private Task Submit() => Confirm.InvokeAsync((_value, _extra));
+
+}

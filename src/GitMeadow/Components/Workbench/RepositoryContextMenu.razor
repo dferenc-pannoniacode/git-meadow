@@ -1,0 +1,24 @@
+<ContextMenu X="X" Y="Y" Label="@($"Actions for repository {Title}")">
+    <div class="context-menu-heading">@Title</div>
+    <button type="button" @onclick="@(() => View.InvokeAsync(new(GitView.Reflog)))">Reflog</button>
+    <button type="button" @onclick="@(() => View.InvokeAsync(new(GitView.Config)))">Show commit identity</button>
+    <button type="button" @onclick="@(() => Prompt.InvokeAsync(new("Set commit identity", GitAction.SetIdentity, "Name", "Email", ExtraOptional: false)))">Commit identity</button>
+    <button type="button" @onclick="@(() => View.InvokeAsync(new(GitView.Worktrees)))">List worktrees</button>
+    <button type="button" @onclick="@(() => Prompt.InvokeAsync(new("Add worktree", GitAction.AddWorktree, "Workspace-relative directory", "Branch or revision (optional)")))">Add worktree</button>
+    <button type="button" class="danger-quiet" @onclick="@(() => Prompt.InvokeAsync(new("Remove worktree", GitAction.RemoveWorktree, "Workspace-relative directory", Destructive: true)))">Remove worktree</button>
+    <button type="button" @onclick="@(() => View.InvokeAsync(new(GitView.Submodules)))">List submodules</button>
+    <button type="button" @onclick="@(() => Prompt.InvokeAsync(new("Add submodule", GitAction.AddSubmodule, "Submodule URL", "Path in this repository", ExtraOptional: false)))">Add submodule</button>
+    <button type="button" @onclick="@(() => Execute.InvokeAsync(new("Update submodules", GitAction.UpdateSubmodules)))">Update submodules</button>
+    <button type="button" class="danger-quiet" @onclick="@(() => Prompt.InvokeAsync(new("Prune stale worktree records", GitAction.Prune, Destructive: true)))">Prune worktrees</button>
+    <button type="button" class="danger-quiet" @onclick="@(() => Prompt.InvokeAsync(new("Squash recent commits", GitAction.SquashLast, "Combined commit message", "Number of commits (default 2)", Destructive: true, Multiline: true)))">Squash commits</button>
+    <button type="button" @onclick="@(() => Prompt.InvokeAsync(new("Apply patch", GitAction.ApplyPatch, "Unified patch", Multiline: true)))">Apply patch</button>
+</ContextMenu>
+
+@code {
+    [Parameter] public double X { get; set; }
+    [Parameter] public double Y { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public EventCallback<Operation> Prompt { get; set; }
+    [Parameter] public EventCallback<Operation> Execute { get; set; }
+    [Parameter] public EventCallback<FileQuery> View { get; set; }
+}

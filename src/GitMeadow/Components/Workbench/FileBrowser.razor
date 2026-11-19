@@ -1,0 +1,59 @@
+<div class="split changes-split">
+    <section class="panel" aria-label="Revision files">
+        <header class="panel-heading"><div><h2>Revision files</h2><p class="mono">@Reference</p></div></header>
+        <div class="file-filter">
+            <form @onsubmit="LoadRevision" @onsubmit:preventDefault>
+                <label>Revision<input @bind="_requestedReference" placeholder="HEAD" disabled="@Busy" /></label>
+                <button class="button" type="submit" disabled="@Busy">Browse</button>
+            </form>
+            <input aria-label="Filter files" @bind="_filter" @bind:event="oninput" placeholder="Filter paths…" />
+        </div>
+        @if (Files.Count == 0) { <div class="empty small">There are no files in this revision.</div> }
+        <div class="file-list">
+            @foreach (var file in Files.Where(file => file.Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                <button type="button" class="line-item @(file == Selected ? "selected" : null)" @key="file" disabled="@Busy" @onclick="@(() => Select(GitView.File, file))"><span aria-hidden="true">▤</span>@file</button>
+            }
+        </div>
+    </section>
+
+    <section class="panel inspection" aria-label="File viewer">
+        <header class="panel-heading"><div><h2>@(Selected ?? "File viewer")</h2><p>@ViewName</p></div>
+            @if (Selected is not null)
+            {
+                <div class="actions">
+                    <button type="button" class="button compact" disabled="@Busy" aria-pressed="@(View == GitView.File)" @onclick="@(() => Select(GitView.File, Selected))">File</button>
+                    <button type="button" class="button compact" disabled="@Busy" aria-pressed="@(View == GitView.FileHistory)" @onclick="@(() => Select(GitView.FileHistory, Selected))">History</button>
+                    <button type="button" class="button compact" disabled="@Busy" aria-pressed="@(View == GitView.Blame)" @onclick="@(() => Select(GitView.Blame, Selected))">Blame</button>
+                </div>
+            }
+        </header>
+        @if (Selected is not null) { <DiffText Text="@Output" Highlight="false" /> }
+        else { <div class="empty">Choose a path to inspect its contents, history, or blame.</div> }
+    </section>
+</div>
+
+@code {
+    [Parameter] public string Reference { get; set; } = "HEAD";
+    [Parameter] public IReadOnlyList<string> Files { get; set; } = [];
+    [Parameter] public string? Selected { get; set; }
+    [Parameter] public string? Output { get; set; }
+    [Parameter] public GitView View { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<FileQuery> Load { get; set; }
+
+    private string _filter = "";
+    private string _requestedReference = "";
+
+    protected override void OnInitialized() => _requestedReference = Reference;
+
+    private string ViewName => View switch
+    {
+        GitView.Blame => "Line attribution",
+        GitView.FileHistory => "File history",
+        _ => "File contents"
+    };
+
+    private Task LoadRevision() => Load.InvokeAsync(new(GitView.Tree, string.IsNullOrWhiteSpace(_requestedReference) ? "HEAD" : _requestedReference.Trim()));
+    private Task Select(GitView view, string path) => Load.InvokeAsync(new(view, Reference, path));
+}

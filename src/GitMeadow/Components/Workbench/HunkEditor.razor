@@ -1,0 +1,82 @@
+<section class="hunk-editor">
+    <button type="button" class="hunk-toggle" aria-expanded="@_expanded" @onclick="Toggle">
+        <span class="hunk-chevron" aria-hidden="true">›</span>
+        <span>@Hunk.Header</span>
+    </button>
+    @if (_expanded)
+    {
+        @if (CanSelectLines)
+        {
+            <div class="hunk-lines" role="group" aria-label="Changed lines">
+                @foreach (var line in Hunk.Lines)
+                {
+                    @if (line.Kind is '+' or '-')
+                    {
+                        <label @key="line.Id" class="hunk-line @(line.Kind == '+' ? "diff-add" : "diff-remove")">
+                            <input type="checkbox" aria-label="@LineLabel(line)" checked="@_selection.Contains(line.Id)" disabled="@Busy"
+                                   @onchange="args => SetSelection(line.Id, args.Value is true)" />
+                            @LineContent(line)
+                        </label>
+                    }
+                    else
+                    {
+                        <div @key="line.Id" class="hunk-line">
+                            <span></span>
+                            @LineContent(line)
+                        </div>
+                    }
+                }
+            </div>
+        }
+        else
+        {
+            <DiffText Text="@Hunk.Text" />
+        }
+
+        <div class="hunk-actions">
+            @if (CanSelectLines)
+            {
+                <button type="button" class="button compact primary" disabled="@(Busy || _selection.Count == 0)"
+                        @onclick="ApplySelection">@(Staged ? "Unstage selected lines" : "Stage selected lines")</button>
+            }
+            <button type="button" class="button compact" disabled="@Busy" @onclick="ApplyWhole">@(Staged ? "Unstage hunk" : "Stage hunk")</button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public PatchHunk Hunk { get; set; } = default!;
+    [Parameter, EditorRequired] public string Path { get; set; } = "";
+    [Parameter] public bool Staged { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter, EditorRequired] public EventCallback<HunkSelection> Apply { get; set; }
+
+    private readonly HashSet<int> _selection = [];
+    private bool _expanded;
+
+    private bool CanSelectLines => Hunk.Lines.Count > 0;
+
+    private void Toggle() => _expanded = !_expanded;
+
+    private void SetSelection(int id, bool selected)
+    {
+        if (selected)
+            _selection.Add(id);
+        else
+            _selection.Remove(id);
+    }
+
+    private Task ApplySelection() => Apply.InvokeAsync(new(Path, Staged, Hunk.Id, _selection.Order().ToArray()));
+    private Task ApplyWhole() => Apply.InvokeAsync(new(Path, Staged, Hunk.Id));
+
+    private static string LineLabel(PatchLine line) => line.Kind == '+'
+        ? $"Select added line {line.NewNumber}"
+        : $"Select removed line {line.OldNumber}";
+
+    private static RenderFragment LineContent(PatchLine line) => @<text>
+        <span class="hunk-number" aria-hidden="true">@line.OldNumber</span>
+        <span class="hunk-number" aria-hidden="true">@line.NewNumber</span>
+        <span class="hunk-sign" aria-hidden="true">@line.Kind</span>
+        <span class="hunk-code">@line.Text.TrimEnd('\r')</span>
+    </text>;
+}

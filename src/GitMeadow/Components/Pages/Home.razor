@@ -1,0 +1,195 @@
+@page "/"
+@rendermode InteractiveServer
+@inject GitWorkspace Workspace
+@inject SampleRepository Sample
+
+<div class="workbench" inert="@ModalOpen">
+    <RepositorySidebar Repositories="_repositories" Current="@_repo" Revision="@_revision" Root="@Workspace.Root"
+                       State="_state" Busy="_busy" Open="OpenRepositoryAsync" OpenContextMenu="ShowRepositoryActions" Add="ShowRepositoryMenu"
+                       AddReference="ShowNewRefs" OpenReferenceContextMenu="ShowRefActions" Browse="BrowseAsync" />
+
+    <main class="main">
+        <header class="topbar">
+            <div class="breadcrumb"><span>Workspace</span>@if (_repo is not null) { <span aria-hidden="true">/</span><strong>@RepositoryTitle</strong> }</div>
+            <div class="actions">
+                <button type="button" class="button top-button" disabled="@_busy" @onclick="ShowGitSettings"><span aria-hidden="true">⚙</span> Git settings</button>
+                @if (_state is not null)
+                {
+                    <button type="button" class="button top-button" disabled="@_busy" @onclick="@(() => RunAsync(new Operation("Fetch all remotes", GitAction.Fetch)))"><span aria-hidden="true">↻</span> Fetch</button>
+                    <button type="button" class="button top-button" disabled="@_busy" @onclick="@(ShowPull)"><span aria-hidden="true">↓</span> Pull</button>
+                    <button type="button" class="button top-button" disabled="@_busy" @onclick="@(ShowPush)"><span aria-hidden="true">↑</span> Push</button>
+                    <button type="button" class="button icon quiet" title="Refresh checkout" aria-label="Refresh checkout" disabled="@_busy" @onclick="@(RefreshAsync)">⟳</button>
+                }
+                else
+                {
+                    <button type="button" class="button top-button" disabled="@_busy" @onclick="@(RefreshAsync)"><span aria-hidden="true">⟳</span> Refresh workspace</button>
+                }
+            </div>
+        </header>
+
+        @if (_error is not null)
+        {
+            <div class="notice error" role="alert"><span>@_error</span><button class="button quiet icon compact" aria-label="Dismiss error" @onclick="@(() => _error = null)">×</button></div>
+        }
+        @if (_status is not null)
+        {
+            <div class="notice" role="status"><span>@_status</span><button class="button quiet icon compact" aria-label="Dismiss message" @onclick="@(() => _status = null)">×</button></div>
+        }
+
+        @if (_state is null)
+        {
+            <div class="welcome">
+                <div class="welcome-art" aria-hidden="true"><i></i><i></i><i></i><i></i><span></span><span></span><span></span><span></span></div>
+                <div class="welcome-content">
+                    <span class="welcome-icon" aria-hidden="true">⑂</span>
+                    <h1>Open a repository</h1>
+                    <p>Review commit history, stage changes, and manage branches in your browser.</p>
+                    <div class="welcome-buttons">
+                        <button type="button" class="button primary" disabled="@_busy" @onclick="@(() => StartRepositoryForm(RepositoryForm.Open))">Open repository</button>
+                        <button type="button" class="button" disabled="@_busy" @onclick="@(() => StartRepositoryForm(RepositoryForm.Clone))">Clone repository</button>
+                        <button type="button" class="button" disabled="@_busy" @onclick="@(() => StartRepositoryForm(RepositoryForm.Create))">New repository</button>
+                    </div>
+                    <button type="button" class="sample-link" disabled="@_busy" @onclick="@(CreateSampleAsync)">Explore with a sample repository <span aria-hidden="true">↗</span></button>
+                    @if (_busy) { <p class="working" role="status">Working…</p> }
+                </div>
+            </div>
+        }
+        else if (_repo is { } repository)
+        {
+            <div class="content">
+                <section class="repo-header">
+                    <div>
+                        <div class="heading-line">
+                            <h1 @oncontextmenu="@(pointer => ShowRepositoryActions((repository, pointer)))" @oncontextmenu:preventDefault>@RepositoryDisplayName(repository)</h1>
+                            <span class="branch-pill"><span aria-hidden="true">⑂</span> @_state.Branch</span>
+                        </div>
+                        <div class="repo-subline">@(_revision is null ? "All references" : $"History of {RevisionTitle}")</div>
+                    </div>
+                    <button class="button" type="button" disabled="@_busy" @onclick="@(ShowNewRefs)">＋ Create ref</button>
+                </section>
+
+                <nav class="tabs" aria-label="Repository views">
+                    <button type="button" aria-current="@Active(ViewTab.History)" disabled="@_busy" @onclick="@(() => SwitchTabAsync(ViewTab.History))"><span aria-hidden="true">◉</span> History</button>
+                    <button type="button" aria-current="@Active(ViewTab.Changes)" disabled="@_busy" @onclick="@(() => SwitchTabAsync(ViewTab.Changes))"><span aria-hidden="true">≋</span> Changes <small>@_state.Changes.Count</small>@if (_state.Operation is not null) { <i class="status-dot"></i> }</button>
+                    <button type="button" aria-current="@Active(ViewTab.Files)" disabled="@_busy" @onclick="@(() => SwitchTabAsync(ViewTab.Files))"><span aria-hidden="true">▤</span> Files</button>
+                    <button type="button" aria-current="@Active(ViewTab.Repository)" disabled="@_busy" @onclick="@(() => SwitchTabAsync(ViewTab.Repository))"><span aria-hidden="true">⚙</span> Repository</button>
+                    @if (_busy) { <span class="working" role="status">Working…</span> }
+                </nav>
+
+                @switch (_tab)
+                {
+                    case ViewTab.History:
+                        <div class="split history-split">
+                            <HistoryGraph Commits="_state.Commits" Refs="_state.Refs" Selected="@_details?.Hash" Select="SelectCommitAsync"
+                                          OpenContextMenu="ShowCommitActions" MoreAvailable="@(_state.Commits.Count == _commitLimit && _commitLimit < MaximumCommits)"
+                                          Busy="_busy" More="LoadMoreAsync" />
+                            <CommitInspector Details="_details" Busy="_busy" InspectFile="LoadFileAsync" />
+                        </div>
+                        break;
+                    case ViewTab.Changes:
+                        <WorkingTree State="_state" Selected="_change" Diff="@_workingDiff" DiffError="@_workingError" Hunks="_hunks" Busy="_busy"
+                                     Select="SelectChangeAsync" Execute="RunAsync" Prompt="ShowOperation" ApplyHunk="ApplyHunkAsync" />
+                        break;
+                    case ViewTab.Files:
+                        <FileBrowser @key="_fileRevision" Reference="@_fileRevision" Files="_files" Selected="@_file" Output="@_fileOutput"
+                                     View="_fileView" Busy="_busy" Load="LoadFileAsync" />
+                        break;
+                    case ViewTab.Repository:
+                        <RepositoryTools State="_state" Busy="_busy" Prompt="ShowOperation" Execute="RunAsync" View="ShowOutputAsync" />
+                        break;
+                }
+            </div>
+        }
+    </main>
+</div>
+
+@if (_repositoryMenu is { } repositoryMenu)
+{
+    <RepositoryContextMenu @key="repositoryMenu" X="repositoryMenu.Pointer.ClientX" Y="repositoryMenu.Pointer.ClientY"
+                           Title="@RepositoryDisplayName(repositoryMenu.Repository)"
+                           Prompt="@(operation => PromptRepositoryOperationAsync(repositoryMenu, operation))"
+                           Execute="@(operation => UseRepositoryMenuAsync(repositoryMenu, () => RunAsync(operation)))"
+                           View="@(query => UseRepositoryMenuAsync(repositoryMenu, () => ShowOutputAsync(query)))" />
+}
+else if (_referenceMenu is { } referenceMenu)
+{
+    var qualified = referenceMenu.Reference.Qualified();
+    <ContextMenu @key="referenceMenu" X="referenceMenu.Pointer.ClientX" Y="referenceMenu.Pointer.ClientY"
+                 Label="@($"Actions for {qualified}")">
+        <div class="context-menu-heading" title="@qualified">@referenceMenu.Reference.Name</div>
+        @foreach (var item in referenceMenu.Actions)
+        {
+            <button type="button" class="@(item.Destructive ? "danger-quiet" : null)" @onclick="@(() => ShowReferenceOperation(referenceMenu, item))">@item.Title</button>
+        }
+    </ContextMenu>
+}
+else if (_commitMenu is { } commitMenu)
+{
+    var shortHash = commitMenu.Hash[..Math.Min(12, commitMenu.Hash.Length)];
+    <ContextMenu @key="commitMenu" X="commitMenu.X" Y="commitMenu.Y" Label="@($"Actions for commit {shortHash}")">
+        <div class="context-menu-heading" title="@commitMenu.Hash">Commit <span class="mono">@shortHash</span></div>
+        @foreach (var item in commitMenu.Actions)
+        {
+            <button type="button" class="@(item.Destructive ? "danger-quiet" : null)" @onclick="@(() => ShowCommitOperation(item, commitMenu.Hash))">@item.Title</button>
+        }
+        <button type="button" @onclick="@(() => ShowRebasePlanAsync(commitMenu.Hash))">Interactive rebase from here</button>
+        <button type="button" @onclick="@(() => ShowCompare(commitMenu.Hash))">Compare with another revision</button>
+        <button type="button" @onclick="@(() => ShowOutputAsync(new(GitView.Patch, commitMenu.Hash)))">Export patch</button>
+        <button type="button" @onclick="@(() => ShowOutputAsync(new(GitView.Notes, commitMenu.Hash)))">View notes</button>
+        <button type="button" @onclick="@(() => LoadFileAsync(new(GitView.Tree, commitMenu.Hash)))">Browse revision files</button>
+    </ContextMenu>
+}
+
+@if (_gitSettingsOpen)
+{
+    <GitSettingsDialog Cancel="CloseDialog" />
+}
+else if (_repoForm is { } form)
+{
+    <OperationDialog @key="form" Title="@FormTitle(form)" ValueLabel="@FormField(form)"
+                     ExtraLabel="@(form == RepositoryForm.Clone ? "Workspace-relative destination" : null)" ExtraOptional="false"
+                     Busy="_busy" Error="@_dialogError" Cancel="CloseDialog" Confirm="SubmitRepositoryAsync" />
+}
+else if (_operation is { } op)
+{
+    <OperationDialog @key="op" Title="@op.Title" ValueLabel="@op.ValueLabel" ExtraLabel="@op.ExtraLabel" Value="@op.Value" Extra="@op.Extra"
+                     Destructive="@op.Destructive" ValueOptional="@op.ValueOptional" ExtraOptional="@op.ExtraOptional"
+                     Multiline="@op.Multiline" ExtraMultiline="@op.ExtraMultiline" Busy="_busy" Error="@_dialogError" Cancel="CloseDialog"
+                     Description="@OperationDescription(op)"
+                     Confirm="SubmitOperationAsync" />
+}
+else if (_compareFrom is not null)
+{
+    <OperationDialog Title="Compare revisions" ValueLabel="Target revision" Value="HEAD"
+                     Description="@($"Compare changes from {_compareFrom[..Math.Min(12, _compareFrom.Length)]} to the target revision.")"
+                     Busy="_busy" Error="@_dialogError" Cancel="CloseDialog" Confirm="SubmitCompareAsync" />
+}
+else if (_menuTitle is not null)
+{
+    <OverlayPanel TitleId="menu-title" Busy="_busy" Cancel="CloseDialog">
+            <header><h2 id="menu-title">@_menuTitle</h2><button type="button" class="button icon quiet" aria-label="Close" @onclick="@(CloseDialog)">×</button></header>
+            <div class="menu-actions">
+                @foreach (var item in _menu)
+                {
+                    <button type="button" class="button @(item.Destructive ? "danger-quiet" : null)" @onclick="@(() => ShowOperation(item))">@item.Title</button>
+                }
+                @if (_menuTitle == "Add repository")
+                {
+                    <button type="button" class="button" @onclick="@(() => StartRepositoryForm(RepositoryForm.Open))">Open repository</button>
+                    <button type="button" class="button" @onclick="@(() => StartRepositoryForm(RepositoryForm.Clone))">Clone repository</button>
+                    <button type="button" class="button" @onclick="@(() => StartRepositoryForm(RepositoryForm.Create))">New repository</button>
+                }
+            </div>
+    </OverlayPanel>
+}
+else if (_outputQuery is not null)
+{
+    <OverlayPanel TitleId="output-title" Class="output-dialog" Cancel="CloseDialog">
+            <header><h2 id="output-title">@OutputTitle</h2><button type="button" class="button icon quiet" aria-label="Close" @onclick="@(CloseDialog)">×</button></header>
+            <DiffText Text="@_output" Highlight="@OutputIsPatch" />
+            @if (OutputIsPatch && !string.IsNullOrEmpty(_output))
+            {
+                <footer><a class="button primary" download="git-meadow.patch" href="@PatchDownload">Download patch</a></footer>
+            }
+    </OverlayPanel>
+}

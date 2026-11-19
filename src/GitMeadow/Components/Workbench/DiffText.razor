@@ -1,0 +1,28 @@
+@if (string.IsNullOrEmpty(Text))
+{
+    <div class="empty small">No output to display.</div>
+}
+else if (Highlight)
+{
+    <pre class="diff" tabindex="0" aria-label="Unified diff">@foreach (var line in Text.Split('\n'))
+        {<span class="@Style(line)">@(line.Length == 0 ? " " : line.TrimEnd('\r'))</span>}</pre>
+}
+else
+{
+    <pre class="diff plain" tabindex="0">@Text</pre>
+}
+
+@code {
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public bool Highlight { get; set; } = true;
+
+    private static string Style(string line) => line switch
+    {
+        _ when line.StartsWith("+++", StringComparison.Ordinal) || line.StartsWith("---", StringComparison.Ordinal) => "diff-meta",
+        _ when line.StartsWith('+') => "diff-add",
+        _ when line.StartsWith('-') => "diff-remove",
+        _ when line.StartsWith("@@", StringComparison.Ordinal) => "diff-hunk",
+        _ when line.StartsWith("diff ", StringComparison.Ordinal) || line.StartsWith("index ", StringComparison.Ordinal) => "diff-meta",
+        _ => "diff-context"
+    };
+}

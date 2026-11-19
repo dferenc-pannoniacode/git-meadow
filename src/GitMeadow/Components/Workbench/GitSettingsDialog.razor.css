@@ -1,0 +1,21 @@
+.settings-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 16px 0;
+}
+
+.settings-ssh {
+    display: grid;
+    gap: 8px;
+    padding: 16px 16px 0;
+}
+
+.settings-key {
+    font: 12px var(--mono);
+    overflow-wrap: anywhere;
+}
+
+.settings-feedback {
+    margin: 0 16px 16px;
+}
