@@ -28,7 +28,8 @@ public partial class Home
     private RepositoryState? _state;
     private CommitDetails? _details;
     private ViewTab _tab;
-    private bool _busy;
+    private bool _busy = true;
+    private RepositorySelectionStorage? _repositorySelection;
     private bool _gitSettingsOpen;
     private string? _error;
     private string? _status;
@@ -73,30 +74,60 @@ public partial class Home
         _ => _outputQuery?.View.ToString() ?? ""
     };
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!firstRender)
+            return;
+
+        var selection = new RepositorySelectionStorage(JS, Logger, Workspace.Root);
+        _repositorySelection = selection;
+        _busy = false;
         await WorkAsync(async () =>
         {
             _repositories = await Workspace.ListAsync();
+            if (await selection.ReadAsync() is { } savedRepository)
+            {
+                try
+                {
+                    await ReadRepositoryAsync(savedRepository);
+                    return;
+                }
+                catch (Exception ex) when (IsWorkspaceError(ex))
+                {
+                    Logger.LogDebug(ex, "The saved repository could not be reopened.");
+                }
+            }
+
             if (_repositories.Count > 0)
                 await ReadRepositoryAsync(_repositories[0]);
         });
+        StateHasChanged();
     }
 
     private Task RefreshAsync() => WorkAsync(async () =>
     {
         _repositories = await Workspace.ListAsync();
-        if (_repo is not null)
+        if (_repo is { } repo)
+        {
+            IncludeRepository(repo);
             await ReloadAsync();
+        }
     });
 
     private Task OpenRepositoryAsync(string repo) => WorkAsync(async () =>
     {
         CloseDialog();
-        await ReadRepositoryAsync(repo);
+        await SelectRepositoryAsync(repo);
     });
 
-    private async Task ReadRepositoryAsync(string path)
+    private async Task SelectRepositoryAsync(string path)
+    {
+        var repo = await ReadRepositoryAsync(path);
+        if (_repositorySelection is not null)
+            await _repositorySelection.WriteAsync(repo);
+    }
+
+    private async Task<string> ReadRepositoryAsync(string path)
     {
         var repo = await Workspace.OpenAsync(path);
         var state = await Workspace.ReadAsync(repo);
@@ -110,6 +141,12 @@ public partial class Home
         _change = null;
         _file = null;
         _files = [];
+        IncludeRepository(repo);
+        return repo;
+    }
+
+    private void IncludeRepository(string repo)
+    {
         if (!_repositories.Contains(repo, StringComparer.Ordinal))
             _repositories = _repositories.Append(repo).ToArray();
     }
@@ -523,7 +560,7 @@ public partial class Home
         }
 
         _repositories = await Workspace.ListAsync();
-        await ReadRepositoryAsync(repo);
+        await SelectRepositoryAsync(repo);
         CloseDialog();
     }, dialog: true);
 
@@ -571,7 +608,7 @@ public partial class Home
     {
         var repo = await Sample.CreateAsync();
         _repositories = await Workspace.ListAsync();
-        await ReadRepositoryAsync(repo);
+        await SelectRepositoryAsync(repo);
     });
 
     private Task SubmitOperationAsync((string? Value, string? Extra) input) => _operation is { } operation

@@ -1,7 +1,10 @@
 @page "/"
 @rendermode InteractiveServer
+@using Microsoft.JSInterop
 @inject GitWorkspace Workspace
 @inject SampleRepository Sample
+@inject IJSRuntime JS
+@inject ILogger<Home> Logger
 
 <div class="workbench" inert="@ModalOpen">
     <RepositorySidebar Repositories="_repositories" Current="@_repo" Revision="@_revision" Root="@Workspace.Root"
