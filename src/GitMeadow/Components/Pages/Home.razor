@@ -6,7 +6,7 @@
 <div class="workbench" inert="@ModalOpen">
     <RepositorySidebar Repositories="_repositories" Current="@_repo" Revision="@_revision" Root="@Workspace.Root"
                        State="_state" Busy="_busy" Open="OpenRepositoryAsync" OpenContextMenu="ShowRepositoryActions" Add="ShowRepositoryMenu"
-                       AddReference="ShowNewRefs" OpenReferenceContextMenu="ShowRefActions" Browse="BrowseAsync" />
+                       AddReference="ShowCreateReferenceMenu" OpenReferenceContextMenu="ShowRefActions" Browse="BrowseAsync" />
 
     <main class="main">
         <header class="topbar">
@@ -65,7 +65,7 @@
                         </div>
                         <div class="repo-subline">@(_revision is null ? "All references" : $"History of {RevisionTitle}")</div>
                     </div>
-                    <button class="button" type="button" disabled="@_busy" @onclick="@(ShowNewRefs)">＋ Create ref</button>
+                    <button @ref="_createRefButton" class="button" type="button" disabled="@_busy" @onclick="@(() => ShowCreateReferenceMenu(_createRefButton))">＋ Create ref</button>
                 </section>
 
                 <nav class="tabs" aria-label="Repository views">
@@ -109,6 +109,15 @@
         <button type="button" @onclick="@(() => UseAddRepositoryMenuAsync(addMenu, RepositoryForm.Open))">Open repository</button>
         <button type="button" @onclick="@(() => UseAddRepositoryMenuAsync(addMenu, RepositoryForm.Create))">New repository</button>
         <button type="button" @onclick="@(() => UseAddRepositoryMenuAsync(addMenu, RepositoryForm.Clone))">Clone repository</button>
+    </ContextMenu>
+}
+else if (_createReferenceMenu is { } createRefMenu)
+{
+    <ContextMenu @key="createRefMenu" Anchor="createRefMenu.Anchor" Label="Create reference">
+        @foreach (var item in createRefMenu.Actions)
+        {
+            <button type="button" @onclick="@(() => UseCreateReferenceMenu(createRefMenu, item))">@item.Title</button>
+        }
     </ContextMenu>
 }
 else if (_repositoryMenu is { } repositoryMenu)
@@ -179,18 +188,6 @@ else if (_compareFrom is not null)
     <OperationDialog Title="Compare revisions" ValueLabel="Target revision" Value="HEAD"
                      Description="@($"Compare changes from {_compareFrom[..Math.Min(12, _compareFrom.Length)]} to the target revision.")"
                      Busy="_busy" Error="@_dialogError" Cancel="CloseDialog" Confirm="SubmitCompareAsync" />
-}
-else if (_menuTitle is not null)
-{
-    <OverlayPanel TitleId="menu-title" Busy="_busy" Cancel="CloseDialog">
-            <header><h2 id="menu-title">@_menuTitle</h2><button type="button" class="button icon quiet" aria-label="Close" @onclick="@(CloseDialog)">×</button></header>
-            <div class="menu-actions">
-                @foreach (var item in _menu)
-                {
-                    <button type="button" class="button @(item.Destructive ? "danger-quiet" : null)" @onclick="@(() => ShowOperation(item))">@item.Title</button>
-                }
-            </div>
-    </OverlayPanel>
 }
 else if (_outputQuery is not null)
 {

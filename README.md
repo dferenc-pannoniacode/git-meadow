@@ -4,27 +4,55 @@ Git Meadow is a local Git workbench for the browser. It runs as a .NET 11 Blazor
 
 ## Run with Docker
 
-If you previously configured Git or SSH inside a container without a home volume, copy those files out before upgrading. After the upgrade, restore them to `/home/app` with ownership for the `app` user.
+### Use the published image
+
+Save this as `compose.yaml` in a deployment directory. The example uses the published `v0.9.0-rc2` prerelease. You can choose a different tag from the [Git Meadow container package](https://github.com/dferenc-pannoniacode/git-meadow/pkgs/container/git-meadow).
+
+```yaml
+services:
+  git-meadow:
+    image: ghcr.io/dferenc-pannoniacode/git-meadow:v0.9.0-rc2
+    ports:
+      - "127.0.0.1:5081:8080"
+    environment:
+      GitMeadow__AntiforgeryCookieName: .AspNetCore.Antiforgery.GitMeadow-${COMPOSE_PROJECT_NAME}
+    volumes:
+      - workspace:/workspaces
+      - git-home:/home/app
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  workspace: {}
+  git-home: {}
+```
+
+Run this from the directory containing `compose.yaml`.
+
+```sh
+docker compose up --pull always --detach --wait
+```
+
+To upgrade, change the image tag and rerun the command with the same Compose project name so Compose reuses the existing volumes.
+
+### Build from source
+
+From the repository root, use the checked-in [compose.yaml](compose.yaml).
 
 ```sh
 docker compose up --build --detach --wait
 ```
 
-Open [http://127.0.0.1:5080](http://127.0.0.1:5080). Choose **Explore with a sample repository** to try a real merge graph, two working-tree changes, and the commit workflow. Use **Open repository** to browse existing checkouts, **Clone repository** to clone a remote into an empty folder, or **New repository** to initialize a checkout. The workspace picker lets you create a destination folder for either Clone or New.
+### Open Git Meadow and manage storage
 
-The `workspace` volume keeps repositories across container replacements and image upgrades. The `git-home` volume keeps global Git settings and credentials in `/home/app`. Run `docker compose down` to stop the app and keep both volumes. Adding `--volumes` removes them.
+Open [http://127.0.0.1:5081](http://127.0.0.1:5081). Choose **Explore with a sample repository** to try the history and commit workflows, or use **Open repository**, **Clone repository**, or **New repository** to work with your own checkout.
 
-To use an existing host directory for repositories, start the same image with a bind mount at `/workspaces`. The container runs as the image’s `app` user, so that user needs write access to the mounted checkout and its Git metadata.
+The `workspace` volume stores repositories. The `git-home` volume keeps global Git settings, credentials, and ASP.NET Core Data Protection keys in `/home/app`. `docker compose down` stops the app and keeps both volumes. Adding `--volumes` deletes them.
 
-If you’re upgrading an existing Compose deployment, add `--remove-orphans` to `docker compose up` to free port 5080 from the previous service. This keeps the workspace volume.
+To use a host directory, replace `workspace:/workspaces` with `"/absolute/path/to/repositories:/workspaces"`. The container’s `app` user needs write access to the mounted checkouts and their Git metadata.
 
-The image uses Microsoft’s Alpine ASP.NET Core runtime with globalization and time-zone data. It includes Git and the OpenSSH client for repository operations.
-
-```sh
-docker build -t git-meadow .
-docker run --rm -p 127.0.0.1:5080:8080 -v git-meadow-home:/home/app \
-  --mount "type=bind,source=/absolute/path/to/repositories,target=/workspaces" git-meadow
-```
+Compose sets `GitMeadow__AntiforgeryCookieName` from the project name. Builds that support this setting use a distinct cookie name for each Compose project on the same hostname.
 
 ### Configure Git settings and remote authentication
 
@@ -35,29 +63,6 @@ Open **Git settings** in the workspace header. In Docker, the `git-home` volume 
 - **HTTPS.** Enter the HTTPS origin (for example, `https://git.example.com`), a username, and an access token. Use the same origin and username to replace or remove the token. The token is scoped to that origin for Git Meadow and stored in plaintext in `~/.git-meadow-credentials`. Protect access to the volume and its backups.
 
 You can also configure Git and OpenSSH in the container shell with `docker compose exec git-meadow sh` (or `docker exec -it <container> sh` for a standalone container). To manage the files from the host, bind-mount a dedicated directory at `/home/app`. Give the `app` user write access and keep `.ssh` at mode `0700` and private keys at `0600`.
-
-### Pull the published image
-
-The [Docker publish workflow](.github/workflows/publish-docker.yml) builds an image when you push a new version tag for a commit on `main`. Push `main` first, then create and push the release tag.
-
-```sh
-git push origin main
-git tag -a v1.2.3 -m "Release 1.2.3" main
-git push origin tag v1.2.3
-```
-
-Use `v1.2.3` for a stable release or `v1.2.3-rc.1` for a prerelease. The Git tag becomes the image tag at `ghcr.io/owner/repository`, and Git Meadow shows the version in the sidebar. Stable releases also update `latest`. An untagged local build shows `0.0.0-local`.
-
-After the first successful run, open the new package on GitHub and choose **Package settings → Danger Zone → Change visibility → Public**. GitHub creates the package as private, even for a public repository. Once the package is public, anyone can pull it without signing in. See [GitHub's package visibility instructions](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility#configuring-visibility-of-packages-for-your-personal-account).
-
-Replace `owner/repository` with the GitHub repository path in lowercase:
-
-```sh
-image=ghcr.io/owner/repository:v1.2.3
-docker pull "$image"
-docker run --rm -p 127.0.0.1:5080:8080 -v git-meadow-workspace:/workspaces \
-  -v git-meadow-home:/home/app --cap-drop ALL --security-opt no-new-privileges:true "$image"
-```
 
 ## Run with .NET
 
@@ -106,12 +111,10 @@ Git Meadow runs Git as a separate executable. The image includes Git Meadow’s 
 
 The image ships the Git Meadow source used to build it, including the Dockerfile and build configuration, in `/usr/share/doc/git-meadow/app-source/`. The exact source for the installed Alpine Git package, including the upstream archive, Alpine patches and build recipe, ships in `/usr/share/doc/git-meadow/git-source/`. Its `package.txt` records the package version and Alpine packaging commit.
 
-To extract both from a locally built image, run the commands below. For a prebuilt image, replace the `git-meadow` image name with the image tag you pulled.
+Once the Compose container exists, copy the bundled source from the deployment directory.
 
 ```sh
-docker create --name git-meadow-source git-meadow
-docker cp git-meadow-source:/usr/share/doc/git-meadow ./git-meadow-source
-docker rm git-meadow-source
+docker compose cp git-meadow:/usr/share/doc/git-meadow ./git-meadow-source
 ```
 
 When distributing a prebuilt image, keep these files with the image and give recipients the extraction instructions alongside the download or pull instructions. Check the redistribution terms for the other bundled packages, including those inherited from the base image. [Git license](https://git-scm.com/about) · [GPLv2, Sections 2–3](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)

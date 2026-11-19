@@ -6,6 +6,12 @@ var builder = WebApplication.CreateBuilder(args);
 var root = builder.Configuration["GitMeadow:Workspace"]
     ?? Path.Combine(builder.Environment.ContentRootPath, "workspace");
 
+var antiforgeryCookieName = builder.Configuration["GitMeadow:AntiforgeryCookieName"];
+if (!string.IsNullOrWhiteSpace(antiforgeryCookieName))
+{
+    builder.Services.AddAntiforgery(options => options.Cookie.Name = antiforgeryCookieName);
+}
+
 builder.Services.AddSingleton(new GitWorkspace(root));
 builder.Services.AddSingleton(_ => new GitSettings(GitSettings.ResolveHome()));
 builder.Services.AddSingleton<SampleRepository>();

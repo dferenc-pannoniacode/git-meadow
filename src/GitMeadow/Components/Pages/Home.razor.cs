@@ -16,6 +16,7 @@ public partial class Home
     {
         public ElementReference Anchor { get; } = anchor;
     }
+    private sealed record CreateReferenceMenu(ElementReference Anchor, IReadOnlyList<Operation> Actions);
     private sealed record CommitMenu(string Hash, double X, double Y, IReadOnlyList<Operation> Actions);
     private sealed record RepositoryMenu(string Repository, MouseEventArgs Pointer);
     private sealed record ReferenceMenu(GitRef Reference, MouseEventArgs Pointer, IReadOnlyList<Operation> Actions);
@@ -32,9 +33,9 @@ public partial class Home
     private string? _error;
     private string? _status;
     private string? _dialogError;
-    private string? _menuTitle;
-    private IReadOnlyList<Operation> _menu = [];
+    private ElementReference _createRefButton;
     private AddRepositoryMenu? _addRepositoryMenu;
+    private CreateReferenceMenu? _createReferenceMenu;
     private CommitMenu? _commitMenu;
     private RepositoryMenu? _repositoryMenu;
     private ReferenceMenu? _referenceMenu;
@@ -60,7 +61,7 @@ public partial class Home
     private string RepositoryDisplayName(string repo) =>
         repo == "." ? Path.GetFileName(Path.TrimEndingDirectorySeparator(Workspace.Root)) : repo;
     private string? RevisionTitle => _state?.Refs.FirstOrDefault(reference => reference.Qualified() == _revision)?.Name ?? _revision;
-    private bool ModalOpen => _gitSettingsOpen || _repoForm is not null || _operation is not null || _menuTitle is not null || _outputQuery is not null || _compareFrom is not null;
+    private bool ModalOpen => _gitSettingsOpen || _repoForm is not null || _operation is not null || _outputQuery is not null || _compareFrom is not null;
     private string PatchDownload => $"data:text/x-diff;base64,{Convert.ToBase64String(Encoding.UTF8.GetBytes(_output ?? ""))}";
     private bool OutputIsPatch => _outputQuery?.View is GitView.Patch or GitView.StashPatch or GitView.Compare;
     private string OutputTitle => _outputQuery?.View switch
@@ -344,11 +345,24 @@ public partial class Home
     private Task UseAddRepositoryMenuAsync(AddRepositoryMenu menu, RepositoryForm form) =>
         ReferenceEquals(_addRepositoryMenu, menu) ? ShowRepositoryBrowserAsync(form) : Task.CompletedTask;
 
-    private void ShowNewRefs() => ShowMenu("Create reference",
-    [
-        .. NewRefActions(null),
-        new("Create annotated tag at HEAD", GitAction.TagAnnotated, "Tag name", "Tag message", ExtraOptional: false)
-    ]);
+    private void ShowCreateReferenceMenu(ElementReference anchor)
+    {
+        if (_busy || ModalOpen || _repo is null)
+            return;
+
+        CloseContextMenus();
+        _createReferenceMenu = new(anchor,
+        [
+            .. NewRefActions(null),
+            new("Create annotated tag at HEAD", GitAction.TagAnnotated, "Tag name", "Tag message", ExtraOptional: false)
+        ]);
+    }
+
+    private void UseCreateReferenceMenu(CreateReferenceMenu menu, Operation operation)
+    {
+        if (ReferenceEquals(_createReferenceMenu, menu) && !_busy && !ModalOpen)
+            ShowOperation(operation);
+    }
 
     private static Operation[] NewRefActions(string? hash) =>
     [
@@ -436,12 +450,6 @@ public partial class Home
             new("Hard reset", GitAction.ResetHard, Value: hash, Destructive: true),
             new("Add note", GitAction.AddNote, ExtraLabel: "Note", Value: hash, ExtraOptional: false, ExtraMultiline: true)
         ]);
-    }
-
-    private void ShowMenu(string title, IReadOnlyList<Operation> actions)
-    {
-        CloseDialog();
-        (_menuTitle, _menu) = (title, actions);
     }
 
     private void ShowOperation(Operation operation)
@@ -541,19 +549,19 @@ public partial class Home
 
     private void CloseDialog()
     {
-        (_repoForm, _operation, _menuTitle, _outputQuery, _output, _dialogError) = (null, null, null, null, null, null);
+        (_repoForm, _operation, _outputQuery, _output, _dialogError) = (null, null, null, null, null);
         _repositoryFolder = null;
         _gitSettingsOpen = false;
         _operationRepo = null;
         _operationCommit = null;
         _compareFrom = null;
-        _menu = [];
         CloseContextMenus();
     }
 
     private void CloseContextMenus()
     {
         _addRepositoryMenu = null;
+        _createReferenceMenu = null;
         _commitMenu = null;
         _repositoryMenu = null;
         _referenceMenu = null;

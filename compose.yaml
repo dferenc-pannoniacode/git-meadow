@@ -2,7 +2,9 @@ services:
   git-meadow:
     build: .
     ports:
-      - "127.0.0.1:5080:8080"
+      - "127.0.0.1:5081:8080"
+    environment:
+      GitMeadow__AntiforgeryCookieName: .AspNetCore.Antiforgery.GitMeadow-${COMPOSE_PROJECT_NAME}
     volumes:
       - workspace:/workspaces
       - git-home:/home/app

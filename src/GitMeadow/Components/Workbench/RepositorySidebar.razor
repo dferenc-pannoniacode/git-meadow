@@ -29,7 +29,7 @@
         {
             <div class="sidebar-heading refs-heading">
                 <h2>References</h2>
-                <button type="button" class="button compact icon quiet" aria-label="Create branch or tag" title="Create branch or tag" disabled="@Busy" @onclick="@(AddReference)">+</button>
+                <button @ref="_addReferenceButton" type="button" class="button compact icon quiet" aria-label="Create branch or tag" title="Create branch or tag" disabled="@Busy" @onclick="@(() => AddReference.InvokeAsync(_addReferenceButton))">+</button>
             </div>
             <button type="button" class="nav-ref all-refs @(Revision is null ? "current" : null)" disabled="@Busy" @onclick="@(() => Browse.InvokeAsync(null))"><span aria-hidden="true">◎</span><span>All references</span></button>
             <RefGroup Title="Branches" Symbol="⑂" Items="@Refs("branch")" Current="@State.Branch" Repository="@repository"
@@ -60,11 +60,12 @@
     [Parameter] public EventCallback<string> Open { get; set; }
     [Parameter] public EventCallback<(string Repository, MouseEventArgs Pointer)> OpenContextMenu { get; set; }
     [Parameter] public EventCallback<ElementReference> Add { get; set; }
-    [Parameter] public EventCallback AddReference { get; set; }
+    [Parameter] public EventCallback<ElementReference> AddReference { get; set; }
     [Parameter] public EventCallback<(string Repository, GitRef Reference, MouseEventArgs Pointer)> OpenReferenceContextMenu { get; set; }
     [Parameter] public EventCallback<string> Browse { get; set; }
 
     private ElementReference _addButton;
+    private ElementReference _addReferenceButton;
 
     private IReadOnlyList<GitRef> Refs(string kind) => State?.Refs.Where(reference => reference.Kind == kind).ToArray() ?? [];
     private string DisplayName(string repo) => repo == "." ? Path.GetFileName(Path.TrimEndingDirectorySeparator(Root)) : repo;
