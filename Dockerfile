@@ -3,7 +3,8 @@ COPY .dockerignore Dockerfile GitMeadow.slnx LICENSE README.md THIRD-PARTY-NOTIC
 COPY src/GitMeadow/ src/GitMeadow/
 COPY tests/GitMeadow.Tests/ tests/GitMeadow.Tests/
 
-FROM mcr.microsoft.com/dotnet/sdk:11.0.100 AS build
+# Build the framework-dependent app with the builder's native SDK.
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:11.0.100 AS build
 WORKDIR /src
 COPY --from=app-source /global.json ./
 COPY --from=app-source /src/GitMeadow/GitMeadow.csproj /src/GitMeadow/packages.lock.json src/GitMeadow/

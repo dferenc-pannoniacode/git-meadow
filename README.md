@@ -6,12 +6,12 @@ Git Meadow is a local Git workbench for the browser. It runs as a .NET 11 Blazor
 
 ### Use the published image
 
-Save this as `compose.yaml` in a deployment directory. The example uses the published `v0.9.0-rc2` prerelease. You can choose a different tag from the [Git Meadow container package](https://github.com/dferenc-pannoniacode/git-meadow/pkgs/container/git-meadow).
+Save this as `compose.yaml` in a deployment directory. The `v0.9.0-rc7` prerelease supports `linux/amd64` and `linux/arm64`. Docker selects the matching image for your host. You can choose a different tag from the [Git Meadow container package](https://github.com/dferenc-pannoniacode/git-meadow/pkgs/container/git-meadow).
 
 ```yaml
 services:
   git-meadow:
-    image: ghcr.io/dferenc-pannoniacode/git-meadow:v0.9.0-rc2
+    image: ghcr.io/dferenc-pannoniacode/git-meadow:v0.9.0-rc7
     ports:
       - "127.0.0.1:5081:8080"
     environment:
