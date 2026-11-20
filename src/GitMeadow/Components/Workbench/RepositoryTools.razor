@@ -4,7 +4,15 @@
         @if (State.Remotes.Count == 0) { <div class="empty small">No remotes configured.</div> }
         @foreach (var remote in State.Remotes)
         {
-            <div class="tool-row" @key="remote.Name"><div><strong>@remote.Name</strong><small title="@remote.FetchUrl">@remote.FetchUrl</small></div>
+            <div class="tool-row" @key="remote.Name">
+                <div>
+                    <strong>@remote.Name</strong>
+                    <small title="@remote.FetchUrl">@remote.FetchUrl</small>
+                    @if (remote.HasEmbeddedHttpCredentials)
+                    {
+                        <small class="remote-credential-warning">A remote URL contains hidden credentials.</small>
+                    }
+                </div>
                 <div class="actions">
                     <button class="button compact" disabled="@Busy" @onclick="@(() => Run(new("Fetch", GitAction.Fetch, Value: remote.Name)))">Fetch</button>
                     <button class="button compact" disabled="@Busy" @onclick="@(() => Ask(new("Edit remote", GitAction.SetRemote, ExtraLabel: "Remote URL", Value: remote.Name, Extra: remote.FetchUrl, ExtraOptional: false)))">Edit</button>

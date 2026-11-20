@@ -287,6 +287,79 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task Remote_with_an_embedded_username_is_flagged_until_its_url_is_replaced()
+    {
+        const string username = "fixture-organization";
+        const string cleanUrl = "https://git.example.invalid/organization/project/_git/repo";
+        var repo = await _git.CreateAsync();
+        await _git.GitAsync(repo, "remote", "add", "origin",
+            $"https://{username}@git.example.invalid/organization/project/_git/repo");
+
+        var remote = Assert.Single((await Workspace.ReadAsync(repo)).Remotes);
+        Assert.Equal("origin", remote.Name);
+        Assert.True(remote.HasEmbeddedHttpCredentials);
+        Assert.Equal(cleanUrl, remote.FetchUrl);
+        Assert.Equal(cleanUrl, remote.PushUrl);
+
+        foreach (var action in new[] { GitAction.Fetch, GitAction.Pull })
+        {
+            var error = await Assert.ThrowsAsync<ArgumentException>(() => Workspace.ExecuteAsync(repo, action));
+            Assert.Contains("fetch URL for remote 'origin'", error.Message);
+            Assert.Contains("embedded HTTP(S) credentials", error.Message);
+            Assert.Contains("Git settings → HTTPS", error.Message);
+            Assert.DoesNotContain(username, error.Message);
+        }
+
+        await Workspace.ExecuteAsync(repo, GitAction.SetRemote, "origin", cleanUrl);
+
+        var updated = Assert.Single((await Workspace.ReadAsync(repo)).Remotes);
+        Assert.False(updated.HasEmbeddedHttpCredentials);
+        Assert.Equal(cleanUrl, updated.FetchUrl);
+        Assert.Equal(cleanUrl, (await _git.GitAsync(repo, "remote", "get-url", "origin")).Trim());
+    }
+
+    [Fact]
+    public async Task Secondary_fetch_url_with_credentials_is_flagged_when_primary_urls_are_clean()
+    {
+        const string fetchUrl = "https://git.example.invalid/team/repo";
+        const string pushUrl = "https://publish.example.invalid/team/repo";
+        var repo = await _git.CreateAsync();
+        await Workspace.ExecuteAsync(repo, GitAction.AddRemote, "origin", fetchUrl);
+        await _git.GitAsync(repo, "config", "--add", "remote.origin.url",
+            "https://fixture-user@mirror.example.invalid/team/repo");
+        await _git.GitAsync(repo, "remote", "set-url", "--push", "origin", pushUrl);
+
+        var remote = Assert.Single((await Workspace.ReadAsync(repo)).Remotes);
+        Assert.True(remote.HasEmbeddedHttpCredentials);
+        Assert.Equal(fetchUrl, remote.FetchUrl);
+        Assert.Equal(pushUrl, remote.PushUrl);
+    }
+
+    [Fact]
+    public async Task Push_url_rewrite_with_credentials_is_flagged_without_exposing_them()
+    {
+        const string cleanUrl = "https://git.example.invalid/team/repo";
+        const string username = "fixture-user";
+        const string token = "fixture-token";
+        var repo = await _git.CreateAsync();
+        await Workspace.ExecuteAsync(repo, GitAction.AddRemote, "origin", cleanUrl);
+        await _git.GitAsync(repo, "config", $"url.https://{username}:{token}@git.example.invalid/.pushInsteadOf",
+            "https://git.example.invalid/");
+
+        var remote = Assert.Single((await Workspace.ReadAsync(repo)).Remotes);
+        Assert.True(remote.HasEmbeddedHttpCredentials);
+        Assert.Equal(cleanUrl, remote.FetchUrl);
+        Assert.Equal(cleanUrl, remote.PushUrl);
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            Workspace.ExecuteAsync(repo, GitAction.Push, "origin"));
+        Assert.Contains("push URL for remote 'origin'", error.Message);
+        Assert.Contains("Git URL rewrite", error.Message);
+        Assert.DoesNotContain(username, error.Message);
+        Assert.DoesNotContain(token, error.Message);
+    }
+
+    [Fact]
     public async Task Pushing_to_configured_fork_does_not_replace_pull_upstream()
     {
         var upstream = Directory.CreateDirectory(Path.Combine(_git.Root, "upstream.git")).FullName;

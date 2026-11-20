@@ -16,7 +16,10 @@ public sealed record RepositoryState(
 public sealed record GitCommit(string Hash, IReadOnlyList<string> Parents, string Author, DateTimeOffset Date, string Subject);
 public sealed record GitChange(string Path, string? OriginalPath, char Index, char WorkTree);
 public sealed record GitRef(string Name, string Hash, string Kind);
-public sealed record GitRemote(string Name, string FetchUrl, string PushUrl);
+public sealed record GitRemote(string Name, string FetchUrl, string PushUrl)
+{
+    internal bool HasEmbeddedHttpCredentials { get; init; }
+}
 public sealed record GitStash(string Name, string Subject, string Hash = "");
 public sealed record CommitDetails(
     string Hash,

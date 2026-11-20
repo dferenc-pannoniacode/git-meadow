@@ -196,10 +196,26 @@ public sealed partial class GitWorkspace
             var name = line[..separator];
             var current = remotes.GetValueOrDefault(name, new GitRemote(name, "", ""));
             var description = line[(separator + 1)..];
-            if (description.EndsWith(" (fetch)", StringComparison.Ordinal))
-                current = current with { FetchUrl = RedactUrl(description[..^8]) };
-            if (description.EndsWith(" (push)", StringComparison.Ordinal) && current.PushUrl.Length == 0)
-                current = current with { PushUrl = RedactUrl(description[..^7]) };
+            if (description.EndsWith(" (fetch)", StringComparison.Ordinal) ||
+                description.EndsWith(']') && description.Contains(" (fetch) [", StringComparison.Ordinal))
+            {
+                // The verbose listing omits secondary fetch URLs and can annotate the primary URL.
+                var urls = await ReadRemoteUrlsAsync(repository, name, push: false);
+                current = current with
+                {
+                    FetchUrl = RedactUrl(urls.FirstOrDefault() ?? ""),
+                    HasEmbeddedHttpCredentials = current.HasEmbeddedHttpCredentials || urls.Any(HasEmbeddedHttpCredentials)
+                };
+            }
+            else if (description.EndsWith(" (push)", StringComparison.Ordinal))
+            {
+                var url = description[..^7];
+                current = current with
+                {
+                    PushUrl = current.PushUrl.Length == 0 ? RedactUrl(url) : current.PushUrl,
+                    HasEmbeddedHttpCredentials = current.HasEmbeddedHttpCredentials || HasEmbeddedHttpCredentials(url)
+                };
+            }
             remotes[name] = current;
         }
         return remotes.Values.ToArray();

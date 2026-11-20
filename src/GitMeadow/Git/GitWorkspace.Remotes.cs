@@ -113,15 +113,17 @@ public sealed partial class GitWorkspace
     private async Task<bool> VerifyRemoteUrlsAsync(Repository repo, string[] remotes, bool push)
     {
         var isLocal = false;
+        var direction = push ? "push" : "fetch";
         foreach (var remote in remotes)
         {
-            var result = await RunAsync(repo.Path,
-                ["remote", "get-url", "--all", .. push ? new[] { "--push" } : [], "--", remote]);
-            foreach (var url in Lines(result))
-                isLocal |= ValidateRemote(repo.Path, url).IsLocal;
+            foreach (var url in await ReadRemoteUrlsAsync(repo, remote, push))
+                isLocal |= ValidateRemote(repo.Path, url, $"The {direction} URL for remote '{remote}'").IsLocal;
         }
         return isLocal;
     }
+
+    private static async Task<string[]> ReadRemoteUrlsAsync(Repository repo, string remote, bool push) =>
+        Lines(await RunAsync(repo.Path, ["remote", "get-url", "--all", .. push ? new[] { "--push" } : [], "--", remote]));
 
     private static async Task<string?> ReadConfigValueAsync(Repository repo, string key)
     {
@@ -129,7 +131,13 @@ public sealed partial class GitWorkspace
         return value.ExitCode == 1 && value.Error.Length == 0 ? null : value.RequireSuccess().TrimEnd('\r', '\n');
     }
 
-    private (string Url, bool IsLocal) ValidateRemote(string directory, string address)
+    private static bool HasEmbeddedHttpCredentials(Uri uri) =>
+        uri.Scheme is "http" or "https" && uri.UserInfo.Length > 0;
+
+    private static bool HasEmbeddedHttpCredentials(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && HasEmbeddedHttpCredentials(uri);
+
+    private (string Url, bool IsLocal) ValidateRemote(string directory, string address, string urlDescription = "The remote URL")
     {
         if (address.Length > 2048 || address.Trim() != address || address.StartsWith('-') ||
             address.Any(char.IsControl))
@@ -143,6 +151,9 @@ public sealed partial class GitWorkspace
                 throw new ArgumentException("Enter a valid Git remote URL.");
             if (uri.Scheme == "file" && !uri.IsUnc && uri.UserInfo.Length == 0)
                 return LocalRemote(directory, uri.LocalPath);
+            if (HasEmbeddedHttpCredentials(uri))
+                throw new ArgumentException($"{urlDescription} contains embedded HTTP(S) credentials. " +
+                    "Remove them from the remote URL or its Git URL rewrite. For authentication, use an HTTPS remote and Git settings → HTTPS.");
             if (uri.Scheme is "http" or "https" or "ssh" && uri.Host.Length > 0 &&
                 uri.Query.Length == 0 && uri.Fragment.Length == 0 &&
                 (uri.UserInfo.Length == 0 ||
