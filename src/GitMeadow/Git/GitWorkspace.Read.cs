@@ -205,7 +205,7 @@ public sealed partial class GitWorkspace
         return remotes.Values.ToArray();
     }
 
-    private static string RedactUrl(string url)
+    internal static string RedactUrl(string url)
     {
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && !uri.IsFile && uri.Host.Length > 0 &&
             (uri.Scheme != "ssh" || Uri.UnescapeDataString(uri.UserInfo).Contains(':')))

@@ -15,6 +15,7 @@ if (!string.IsNullOrWhiteSpace(antiforgeryCookieName))
 builder.Services.AddSingleton(new GitWorkspace(root));
 builder.Services.AddSingleton(_ => new GitSettings(GitSettings.ResolveHome()));
 builder.Services.AddSingleton<SampleRepository>();
+builder.Services.AddScoped<GitCommandHistory>();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents()
     .AddHubOptions(options => options.MaximumReceiveMessageSize = 8 * 1024 * 1024);
 

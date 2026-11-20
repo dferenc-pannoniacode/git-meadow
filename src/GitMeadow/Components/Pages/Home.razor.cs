@@ -29,6 +29,7 @@ public partial class Home
     private CommitDetails? _details;
     private ViewTab _tab;
     private bool _busy = true;
+    private bool _terminalOpen;
     private RepositorySelectionStorage? _repositorySelection;
     private bool _gitSettingsOpen;
     private string? _error;
@@ -662,7 +663,7 @@ public partial class Home
         (_error, _status, _dialogError) = (null, null, null);
         try
         {
-            await work();
+            await CommandHistory.CaptureAsync(work);
         }
         catch (Exception ex) when (IsWorkspaceError(ex))
         {

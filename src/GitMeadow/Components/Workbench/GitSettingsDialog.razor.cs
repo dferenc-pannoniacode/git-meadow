@@ -82,7 +82,7 @@ public partial class GitSettingsDialog
         (_busy, _error, _status) = (true, null, null);
         try
         {
-            await operation();
+            await CommandHistory.CaptureAsync(operation);
             _status = success;
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException or TimeoutException)

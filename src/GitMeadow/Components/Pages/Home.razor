@@ -5,6 +5,7 @@
 @inject SampleRepository Sample
 @inject IJSRuntime JS
 @inject ILogger<Home> Logger
+@inject GitCommandHistory CommandHistory
 
 <div class="workbench" inert="@ModalOpen">
     <RepositorySidebar Repositories="_repositories" Current="@_repo" Revision="@_revision" Root="@Workspace.Root"
@@ -15,6 +16,8 @@
         <header class="topbar">
             <div class="breadcrumb"><span>Workspace</span>@if (_repo is not null) { <span aria-hidden="true">/</span><strong>@RepositoryTitle</strong> }</div>
             <div class="actions">
+                <button type="button" class="button top-button" aria-expanded="@(_terminalOpen ? "true" : "false")"
+                        @onclick="@(() => _terminalOpen = !_terminalOpen)"><span aria-hidden="true">&gt;_</span> Terminal</button>
                 <button type="button" class="button top-button" disabled="@_busy" @onclick="ShowGitSettings"><span aria-hidden="true">⚙</span> Git settings</button>
                 @if (_state is not null)
                 {
@@ -29,6 +32,11 @@
                 }
             </div>
         </header>
+
+        @if (_terminalOpen)
+        {
+            <GitTerminal />
+        }
 
         @if (_error is not null)
         {

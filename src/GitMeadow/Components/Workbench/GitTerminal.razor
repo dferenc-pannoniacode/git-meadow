@@ -1,0 +1,111 @@
+@implements IAsyncDisposable
+@inject GitCommandHistory History
+
+<section class="terminal" aria-labelledby="git-terminal-title">
+    <header class="terminal-header">
+        <div>
+            <h2 id="git-terminal-title">Git terminal</h2>
+            <p>Last @GitCommandHistory.Capacity commands in this session, newest first</p>
+        </div>
+        <button type="button" class="button compact" disabled="@(_entries.Count == 0)" @onclick="History.Clear">Clear</button>
+    </header>
+    <div class="transcript">
+        @if (_entries.Count == 0)
+        {
+            <p class="terminal-empty">Git commands and their responses will appear here.</p>
+        }
+        else
+        {
+            <ol class="command-list">
+                @foreach (var entry in _entries)
+                {
+                    var expanded = _expanded == entry.Id;
+                    <li @key="entry.Id">
+                        <button type="button" class="command-row" aria-expanded="@(expanded ? "true" : "false")"
+                                @onclick="@(() => _expanded = expanded ? null : entry.Id)">
+                            <span class="command-text"><span class="prompt" aria-hidden="true">$</span> @entry.Command</span>
+                            <span class="command-status @(entry.Failure is not null || entry.ExitCode is not null and not 0 ? "failed" : null)">@Status(entry)</span>
+                        </button>
+                        @if (expanded)
+                        {
+                            <div class="command-response">
+                                <p class="command-directory">@entry.Directory</p>
+                                @if (entry.Failure is { } failure)
+                                {
+                                    <pre class="stderr">@failure</pre>
+                                }
+                                else if (entry.OutputHidden)
+                                {
+                                    <p>Credential output hidden.</p>
+                                }
+                                else if (entry.Running)
+                                {
+                                    <p>Waiting for Git to finish…</p>
+                                }
+                                else if (entry.Output.Length == 0 && entry.Error.Length == 0)
+                                {
+                                    <p>No output.</p>
+                                }
+                                else
+                                {
+                                    @if (entry.Output.Length > 0)
+                                    {
+                                        <h3>Standard output</h3>
+                                        <pre>@entry.Output</pre>
+                                    }
+                                    @if (entry.Error.Length > 0)
+                                    {
+                                        <h3>Standard error</h3>
+                                        <pre class="stderr">@entry.Error</pre>
+                                    }
+                                }
+                            </div>
+                        }
+                    </li>
+                }
+            </ol>
+        }
+    </div>
+</section>
+
+@code {
+    private IReadOnlyList<GitCommandHistory.Entry> _entries = [];
+    private long? _expanded;
+    private bool _disposed;
+
+    protected override void OnInitialized()
+    {
+        History.Changed += Refresh;
+        _entries = History.Snapshot();
+    }
+
+    private static string Status(GitCommandHistory.Entry entry) => entry.ExitCode is { } code
+        ? $"Exit {code}"
+        : entry.Running ? "Running…" : "Failed";
+
+    private async void Refresh()
+    {
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                if (_disposed)
+                    return;
+
+                _entries = History.Snapshot();
+                StateHasChanged();
+            });
+        }
+        catch (Exception exception)
+        {
+            await DispatchExceptionAsync(exception);
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        History.Changed -= Refresh;
+        return ValueTask.CompletedTask;
+    }
+}

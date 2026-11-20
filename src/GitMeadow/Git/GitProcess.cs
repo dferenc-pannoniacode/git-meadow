@@ -18,7 +18,7 @@ internal static class GitProcess
 
     public static string NullDevice => OperatingSystem.IsWindows() ? "NUL" : "/dev/null";
 
-    public static Task<Result> RunAsync(
+    public static async Task<Result> RunAsync(
         string directory,
         IReadOnlyList<string> arguments,
         string? input = null,
@@ -84,7 +84,24 @@ internal static class GitProcess
         foreach (var argument in arguments)
             start.ArgumentList.Add(argument);
 
-        return RunProcessAsync(start, input, strictOutput, TimeSpan.FromMinutes(3), "Git did not finish within three minutes. Refresh the repository before retrying.");
+        var history = GitCommandHistory.Current;
+        var entry = history?.Start(directory, arguments);
+        Result result;
+        try
+        {
+            result = await RunProcessAsync(start, input, strictOutput, TimeSpan.FromMinutes(3),
+                "Git did not finish within three minutes. Refresh the repository before retrying.");
+        }
+        catch (Exception exception)
+        {
+            if (entry is { } failed)
+                history!.Complete(failed, null, exception.Message);
+            throw;
+        }
+
+        if (entry is { } completed)
+            history!.Complete(completed, result);
+        return result;
     }
 
     public static Task<Result> RunSshKeygenAsync(string directory, IReadOnlyList<string> arguments, string? input = null)
