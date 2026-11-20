@@ -1,4 +1,4 @@
-<ContextMenu X="X" Y="Y" Label="@($"Actions for repository {Title}")">
+<ContextMenu Pointer="Pointer" Label="@($"Actions for repository {Title}")">
     <div class="context-menu-heading">@Title</div>
     <button type="button" @onclick="@(() => View.InvokeAsync(new(GitView.Reflog)))">Reflog</button>
     <button type="button" @onclick="@(() => View.InvokeAsync(new(GitView.Config)))">Show commit identity</button>
@@ -15,8 +15,7 @@
 </ContextMenu>
 
 @code {
-    [Parameter] public double X { get; set; }
-    [Parameter] public double Y { get; set; }
+    [Parameter, EditorRequired] public MouseEventArgs Pointer { get; set; } = default!;
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     [Parameter] public EventCallback<Operation> Prompt { get; set; }
     [Parameter] public EventCallback<Operation> Execute { get; set; }

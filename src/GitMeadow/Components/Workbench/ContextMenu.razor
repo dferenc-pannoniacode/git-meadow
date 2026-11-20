@@ -1,7 +1,7 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 
-<div @ref="_menu" class="context-menu" popover="auto" role="group" aria-label="@Label">
+<div @ref="_menu" class="context-menu" popover="@(Pointer?.Type == "contextmenu" ? "manual" : "auto")" role="group" aria-label="@Label">
     @ChildContent
 </div>
 
@@ -9,8 +9,7 @@
     private const string ModulePath = "./Components/Workbench/ContextMenu.razor.js";
     private const string ShowMethod = "show";
 
-    [Parameter] public double X { get; set; }
-    [Parameter] public double Y { get; set; }
+    [Parameter] public MouseEventArgs? Pointer { get; set; }
     [Parameter] public ElementReference? Anchor { get; set; }
     [Parameter, EditorRequired] public string Label { get; set; } = "";
     [Parameter, EditorRequired] public RenderFragment ChildContent { get; set; } = default!;
@@ -25,7 +24,7 @@
         try
         {
             await using var module = await JS.InvokeAsync<IJSObjectReference>("import", ModulePath);
-            await module.InvokeVoidAsync(ShowMethod, _menu, X, Y, Anchor);
+            await module.InvokeVoidAsync(ShowMethod, _menu, Pointer?.ClientX ?? 0, Pointer?.ClientY ?? 0, Anchor);
         }
         catch (JSDisconnectedException)
         {

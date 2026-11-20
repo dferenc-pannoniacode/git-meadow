@@ -17,7 +17,7 @@ public partial class Home
         public ElementReference Anchor { get; } = anchor;
     }
     private sealed record CreateReferenceMenu(ElementReference Anchor, IReadOnlyList<Operation> Actions);
-    private sealed record CommitMenu(string Hash, double X, double Y, IReadOnlyList<Operation> Actions);
+    private sealed record CommitMenu(string Hash, MouseEventArgs Pointer, IReadOnlyList<Operation> Actions);
     private sealed record RepositoryMenu(string Repository, MouseEventArgs Pointer);
     private sealed record ReferenceMenu(GitRef Reference, MouseEventArgs Pointer, IReadOnlyList<Operation> Actions);
 
@@ -474,7 +474,7 @@ public partial class Home
 
         var (hash, pointer) = request;
         CloseContextMenus();
-        _commitMenu = new(hash, pointer.ClientX, pointer.ClientY,
+        _commitMenu = new(hash, pointer,
         [
             .. NewRefActions(hash),
             new("Check out commit", GitAction.Switch, Value: hash),

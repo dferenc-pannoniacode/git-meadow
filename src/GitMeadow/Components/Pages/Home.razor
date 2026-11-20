@@ -133,7 +133,7 @@ else if (_createReferenceMenu is { } createRefMenu)
 }
 else if (_repositoryMenu is { } repositoryMenu)
 {
-    <RepositoryContextMenu @key="repositoryMenu" X="repositoryMenu.Pointer.ClientX" Y="repositoryMenu.Pointer.ClientY"
+    <RepositoryContextMenu @key="repositoryMenu" Pointer="repositoryMenu.Pointer"
                            Title="@RepositoryDisplayName(repositoryMenu.Repository)"
                            Prompt="@(operation => PromptRepositoryOperationAsync(repositoryMenu, operation))"
                            Execute="@(operation => UseRepositoryMenuAsync(repositoryMenu, () => RunAsync(operation)))"
@@ -142,7 +142,7 @@ else if (_repositoryMenu is { } repositoryMenu)
 else if (_referenceMenu is { } referenceMenu)
 {
     var qualified = referenceMenu.Reference.Qualified();
-    <ContextMenu @key="referenceMenu" X="referenceMenu.Pointer.ClientX" Y="referenceMenu.Pointer.ClientY"
+    <ContextMenu @key="referenceMenu" Pointer="referenceMenu.Pointer"
                  Label="@($"Actions for {qualified}")">
         <div class="context-menu-heading" title="@qualified">@referenceMenu.Reference.Name</div>
         @foreach (var item in referenceMenu.Actions)
@@ -154,7 +154,7 @@ else if (_referenceMenu is { } referenceMenu)
 else if (_commitMenu is { } commitMenu)
 {
     var shortHash = commitMenu.Hash[..Math.Min(12, commitMenu.Hash.Length)];
-    <ContextMenu @key="commitMenu" X="commitMenu.X" Y="commitMenu.Y" Label="@($"Actions for commit {shortHash}")">
+    <ContextMenu @key="commitMenu" Pointer="commitMenu.Pointer" Label="@($"Actions for commit {shortHash}")">
         <div class="context-menu-heading" title="@commitMenu.Hash">Commit <span class="mono">@shortHash</span></div>
         @foreach (var item in commitMenu.Actions)
         {
