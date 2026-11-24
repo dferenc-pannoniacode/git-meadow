@@ -193,7 +193,19 @@ else if (_operation is { Action: GitAction.Push } push && _state is { } pushStat
 }
 else if (_operation is { } op)
 {
+    RenderFragment? remoteOptions = null;
+    if (op.Action == GitAction.PullLfs && _state is { } repository)
+    {
+        remoteOptions = @<text>
+            <option value="">Default remote</option>
+            @foreach (var remote in repository.Remotes)
+            {
+                <option value="@remote.Name">@remote.Name</option>
+            }
+        </text>;
+    }
     <OperationDialog @key="op" Title="@op.Title" ValueLabel="@op.ValueLabel" ExtraLabel="@op.ExtraLabel" Value="@op.Value" Extra="@op.Extra"
+                     ValueOptions="@remoteOptions"
                      Destructive="@op.Destructive" ValueOptional="@op.ValueOptional" ExtraOptional="@op.ExtraOptional"
                      Multiline="@op.Multiline" ExtraMultiline="@op.ExtraMultiline" Busy="_busy" Error="@_dialogError" Cancel="CloseDialog"
                      Description="@OperationDescription(op)"

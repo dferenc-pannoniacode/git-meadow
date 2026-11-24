@@ -23,6 +23,16 @@
     </section>
 
     <section class="panel">
+        <header class="panel-heading"><h2>Git LFS</h2></header>
+        <div class="tool-actions">
+            <button type="button" class="button" disabled="@Busy"
+                    @onclick="@(() => Ask(new("Track files with LFS", GitAction.TrackLfs, "File pattern")))">Track files with LFS</button>
+            <button type="button" class="button" disabled="@(Busy || State.Remotes.Count == 0)"
+                    @onclick="@(() => Ask(new("Download LFS files", GitAction.PullLfs, "Remote", ValueOptional: true)))">Download LFS files</button>
+        </div>
+    </section>
+
+    <section class="panel">
         <header class="panel-heading"><div><h2>Stashes</h2><p>Shelve work in progress</p></div><button class="button primary" disabled="@Busy" @onclick="@(() => Ask(new("Create stash", GitAction.Stash, "Message (optional)", ValueOptional: true)))">Create stash</button></header>
         @if (State.Stashes.Count == 0) { <div class="empty small">No stashes saved.</div> }
         @foreach (var stash in State.Stashes)

@@ -6,6 +6,44 @@ namespace GitMeadow.Git;
 internal static class GitProcess
 {
     internal const int OutputLimit = 4 * 1024 * 1024;
+    private const string LfsPrePushHook = """
+        #!/bin/sh
+        if ! command -v git-lfs >/dev/null 2>&1; then
+            exit 0
+        fi
+
+        configured_lfs_url() {
+            git config --includes --get -- "remote.$1.lfspushurl" ||
+            git config --includes --get -- "remote.$1.lfsurl" ||
+            if [ -f .lfsconfig ]; then
+                git config --includes --file .lfsconfig --get -- "remote.$1.lfsurl"
+            elif git cat-file -e :.lfsconfig 2>/dev/null; then
+                git config --includes --blob :.lfsconfig --get -- "remote.$1.lfsurl"
+            else
+                git config --includes --blob HEAD:.lfsconfig --get -- "remote.$1.lfsurl" 2>/dev/null
+            fi
+        }
+
+        # A shared tracking ref can advance after the first URL and hide objects needed by the next URL.
+        lfs_remote=$1
+        push_urls=$(git remote get-url --push --all -- "$1") || exit $?
+        case "$push_urls" in
+            *'
+        '*)
+                hook_dir=${0%/*}
+                lfs_remote=${hook_dir##*/}
+                ;;
+        esac
+
+        export GIT_CONFIG_COUNT=2
+        export GIT_CONFIG_KEY_0=lfs.allowincompletepush GIT_CONFIG_VALUE_0=false
+        export GIT_CONFIG_KEY_1="remote.$lfs_remote.pushurl" GIT_CONFIG_VALUE_1="$2"
+        if [ "$lfs_remote" != "$1" ] && lfs_url=$(configured_lfs_url "$1"); then
+            export GIT_CONFIG_COUNT=3
+            export GIT_CONFIG_KEY_2="remote.$lfs_remote.lfspushurl" GIT_CONFIG_VALUE_2="$lfs_url"
+        fi
+        exec git-lfs pre-push "$lfs_remote" "$2"
+        """;
     private static readonly Encoding Utf8 = new UTF8Encoding(false);
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(false, throwOnInvalidBytes: true);
     private static readonly string[] RepositoryOverrides =
@@ -18,7 +56,7 @@ internal static class GitProcess
 
     public static string NullDevice => OperatingSystem.IsWindows() ? "NUL" : "/dev/null";
 
-    public static async Task<Result> RunAsync(
+    public static Task<Result> RunAsync(
         string directory,
         IReadOnlyList<string> arguments,
         string? input = null,
@@ -26,7 +64,41 @@ internal static class GitProcess
         bool literalPaths = true,
         string? sequencePlanPath = null,
         bool strictOutput = false,
-        string? settingsHome = null)
+        string? settingsHome = null) =>
+        RunCoreAsync(directory, arguments, input, localTransport, literalPaths, sequencePlanPath, strictOutput,
+            settingsHome, hooksPath: null);
+
+    public static async Task<Result> RunPushAsync(string directory, IReadOnlyList<string> arguments, bool localTransport)
+    {
+        // Git supplies the negotiated ref updates to this app-owned hook. Repository hooks stay disabled.
+        var hooksDirectory = Directory.CreateTempSubdirectory("git-meadow-lfs-");
+        var hookPath = Path.Combine(hooksDirectory.FullName, "pre-push");
+        try
+        {
+            await File.WriteAllTextAsync(hookPath, LfsPrePushHook.ReplaceLineEndings("\n") + "\n", Utf8);
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(hookPath, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+
+            return await RunCoreAsync(directory, arguments, input: null, localTransport: localTransport, literalPaths: true,
+                sequencePlanPath: null, strictOutput: false, settingsHome: null, hooksPath: hooksDirectory.FullName);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(hookPath);
+                hooksDirectory.Delete();
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Trace.TraceWarning("Could not remove the temporary Git LFS hook: {0}", exception.Message);
+            }
+        }
+    }
+
+    private static async Task<Result> RunCoreAsync(string directory, IReadOnlyList<string> arguments, string? input,
+        bool localTransport, bool literalPaths, string? sequencePlanPath, bool strictOutput, string? settingsHome,
+        string? hooksPath)
     {
         var start = CreateStartInfo("git", directory);
         foreach (var key in RepositoryOverrides)
@@ -61,18 +133,30 @@ internal static class GitProcess
         start.Environment["GIT_LITERAL_PATHSPECS"] = literalPaths ? "1" : "0";
         start.Environment["GIT_OPTIONAL_LOCKS"] = "0";
         start.Environment["LC_ALL"] = "C";
+        if (arguments is ["lfs", "track", ..])
+            start.Environment["GIT_LFS_TRACK_NO_INSTALL_HOOKS"] = "1";
 
+        var hooksLocation = hooksPath ?? NullDevice;
+        if (OperatingSystem.IsWindows())
+            hooksLocation = hooksLocation.Replace('\\', '/');
         foreach (var argument in new[]
                  {
                      "--no-pager", "-c", "color.ui=false", "-c", "core.quotePath=false",
                      "-c", "i18n.logOutputEncoding=UTF-8", "-c", $"safe.directory={directory.Replace('\\', '/')}",
-                     "-c", $"core.hooksPath={NullDevice}", "-c", "core.fsmonitor=false",
+                     "-c", $"core.hooksPath={hooksLocation}", "-c", "core.fsmonitor=false",
                      "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", "-c", "gc.auto=0",
                      "-c", "maintenance.auto=false", "-c", "diff.external=",
                      "-c", "fetch.recurseSubmodules=false", "-c", "push.recurseSubmodules=no",
                      "-c", "submodule.recurse=false"
                  })
             start.ArgumentList.Add(argument);
+
+        // Prevent a repository alias from running if the Git LFS executable is absent.
+        if (arguments is ["lfs", ..])
+        {
+            start.ArgumentList.Add("-c");
+            start.ArgumentList.Add("alias.lfs=");
+        }
 
         var home = settingsHome ?? liveHome;
         if (home is not null && GitSettings.ExistingCredentialConfigPath(home) is { } credentialConfig)
@@ -89,8 +173,11 @@ internal static class GitProcess
         Result result;
         try
         {
-            result = await RunProcessAsync(start, input, strictOutput, TimeSpan.FromMinutes(3),
-                "Git did not finish within three minutes. Refresh the repository before retrying.");
+            var lfsTransfer = hooksPath is not null || arguments is ["lfs", "pull", ..];
+            var timeout = TimeSpan.FromMinutes(lfsTransfer ? 30 : 3);
+            var minutes = lfsTransfer ? "30" : "three";
+            result = await RunProcessAsync(start, input, strictOutput, timeout,
+                $"Git did not finish within {minutes} minutes. Refresh the repository before retrying.");
         }
         catch (Exception exception)
         {

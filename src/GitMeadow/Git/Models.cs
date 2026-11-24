@@ -53,7 +53,8 @@ public enum GitAction
     Stash, ApplyStash, PopStash, DropStash, Continue, Abort,
     SetIdentity, AddWorktree, RemoveWorktree, UpdateSubmodules, Prune,
     AddNote, ApplyPatch, ResolveOurs, ResolveTheirs, BisectStart, BisectGood, BisectBad, BisectReset, WriteConflict,
-    RebaseOnto, SquashLast, SetUpstream, TagAnnotated, RebasePlan, Skip, AddSubmodule
+    RebaseOnto, SquashLast, SetUpstream, TagAnnotated, RebasePlan, Skip, AddSubmodule,
+    TrackLfs, PullLfs
 }
 
 public sealed class GitCommandException(string message, int exitCode) : InvalidOperationException(message)

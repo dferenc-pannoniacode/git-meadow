@@ -19,7 +19,7 @@
                     }
                     else
                     {
-                        <input @bind="_value" required="@(!ValueOptional)" disabled="@Busy" autocomplete="off" />
+                        <input @bind="_value" @bind:event="oninput" required="@(!ValueOptional)" disabled="@Busy" autocomplete="off" />
                     }
                 </label>
             }

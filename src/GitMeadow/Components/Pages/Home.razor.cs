@@ -506,9 +506,13 @@ public partial class Home
     private string? OperationDescription(Operation operation)
     {
         var target = _operationCommit is { } hash ? $"Target commit {hash[..Math.Min(12, hash.Length)]}." : null;
-        return operation.Action == GitAction.RebasePlan
-            ? $"{target} Reorder the rows or choose pick, reword, edit, squash, fixup, or drop. Keep each commit on a row.".TrimStart()
-            : target;
+        return operation.Action switch
+        {
+            GitAction.RebasePlan => $"{target} Reorder the rows or choose pick, reword, edit, squash, fixup, or drop. Keep each commit on a row.".TrimStart(),
+            GitAction.TrackLfs => "Enter a pattern such as *.zip. Stage .gitattributes with the matching files, and restage any matching files already in the index.",
+            GitAction.PullLfs => "Download LFS contents for the current checkout and fill in files that still contain pointers.",
+            _ => target
+        };
     }
 
     private Task ShowRepositoryBrowserAsync(RepositoryForm form)
@@ -644,6 +648,8 @@ public partial class Home
 
         CloseDialog();
         _status = string.IsNullOrWhiteSpace(result) ? $"{operation.Title} completed." : result.Trim();
+        if (operation.Action == GitAction.TrackLfs)
+            _tab = ViewTab.Changes;
         if (await TryReloadAsync() && operation.Action == GitAction.RebasePlan && _state?.Operation == "rebase")
         {
             _tab = ViewTab.Changes;

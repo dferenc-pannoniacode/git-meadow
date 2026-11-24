@@ -50,6 +50,12 @@ public sealed partial class GitWorkspace
             throw new InvalidOperationException("Choose a configured remote.");
 
         var allowLocal = await VerifyRemoteUrlsAsync(repo, [remote], action == GitAction.Push);
+        if (action == GitAction.PullLfs)
+        {
+            await EnsureLfsFiltersAsync(repo);
+            return await RunLfsAsync(repo, ["lfs", "pull", "--", remote], localTransport: allowLocal);
+        }
+
         var arguments = action switch
         {
             GitAction.Fetch => new List<string> { "fetch", "--prune", "--no-recurse-submodules", "--", remote },
@@ -59,6 +65,9 @@ public sealed partial class GitWorkspace
         };
         if (action != GitAction.Push && !string.IsNullOrWhiteSpace(reference))
             arguments.Add(Ref(reference));
+
+        if (action == GitAction.Push)
+            return (await GitProcess.RunPushAsync(repo.Path, arguments, allowLocal)).RequireSuccess();
 
         return await RunAsync(repo.Path, arguments, localTransport: allowLocal);
     }

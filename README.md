@@ -6,12 +6,12 @@ Git Meadow is a local Git workbench for the browser. It runs as a .NET 11 Blazor
 
 ### Use the published image
 
-Save this as `compose.yaml` in a deployment directory. The `v0.9.0-rc13` prerelease supports `linux/amd64` and `linux/arm64`. Docker selects the matching image for your host. You can choose a different tag from the [Git Meadow container package](https://github.com/dferenc-pannoniacode/git-meadow/pkgs/container/git-meadow).
+Save this as `compose.yaml` in a deployment directory. The `v0.9.0-rc14` prerelease supports `linux/amd64` and `linux/arm64`. Docker selects the matching image for your host. You can choose a different tag from the [Git Meadow container package](https://github.com/dferenc-pannoniacode/git-meadow/pkgs/container/git-meadow).
 
 ```yaml
 services:
   git-meadow:
-    image: ghcr.io/dferenc-pannoniacode/git-meadow:v0.9.0-rc13
+    image: ghcr.io/dferenc-pannoniacode/git-meadow:v0.9.0-rc14
     ports:
       - "127.0.0.1:5081:8080"
     environment:
@@ -66,11 +66,13 @@ You can also configure Git and OpenSSH in the container shell with `docker compo
 
 ### Use Git LFS
 
-The Docker image includes Git LFS with its file filters enabled. Git Meadow disables Git hooks, including the LFS pre-push hook. To push a ref with new LFS objects, run `git lfs push <remote> <ref>` from the repository in the container shell, then push the ref in Git Meadow.
+The Docker image includes Git LFS with its file filters enabled. Open **Repository → Git LFS → Track files with LFS** and enter a pattern such as `*.zip`. Stage `.gitattributes` along with the matching files, then commit and use **Push**. Git Meadow uploads the LFS objects as part of the push.
+
+Git downloads LFS contents when a pull checks out files with the LFS filters enabled. Use **Repository → Git LFS → Download LFS files** to fetch contents for the current checkout when it already contains pointers, even if the branch is up to date. Git LFS uses the repository’s configured LFS endpoint when one is set.
 
 ## Run with .NET
 
-Install the .NET SDK version specified in `global.json` and Git 2.40 or later on the machine that owns the repository files.
+Install the .NET SDK version specified in `global.json` and Git 2.40 or later on the machine that owns the repository files. Install Git LFS 3.7.1 or later to use the Git LFS controls.
 
 ```powershell
 $env:GitMeadow__Workspace = 'C:\Projects'
