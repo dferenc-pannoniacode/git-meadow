@@ -94,7 +94,7 @@
                             <HistoryGraph Commits="_state.Commits" Refs="_state.Refs" Selected="@_details?.Hash" Select="SelectCommitAsync"
                                           OpenContextMenu="ShowCommitActions" MoreAvailable="@(_state.Commits.Count == _commitLimit && _commitLimit < MaximumCommits)"
                                           Busy="_busy" More="LoadMoreAsync" />
-                            <CommitInspector Details="_details" Busy="_busy" InspectFile="LoadFileAsync" />
+                            <CommitInspector Details="_details" Refs="_state.Refs" Busy="_busy" InspectFile="LoadFileAsync" />
                         </div>
                         break;
                     case ViewTab.Changes:

@@ -8,9 +8,19 @@
     }
     else
     {
+        var refs = Refs.Where(reference => reference.Hash == Details.Hash).ToArray();
         <div class="commit-summary">
             <p class="commit-message">@Details.Message</p>
             <div><strong>@Details.Author</strong><span title="@Details.Email">@Details.Date.ToString("MMM d, yyyy · HH:mm zzz")</span></div>
+            @if (refs.Length > 0)
+            {
+                <ul class="commit-refs" aria-label="Commit references">
+                    @foreach (var reference in refs)
+                    {
+                        <li @key="reference" class="ref-chip @reference.Kind">@reference.Name</li>
+                    }
+                </ul>
+            }
         </div>
         <details class="commit-files">
             <summary>@Details.Files.Count changed file@(Details.Files.Count == 1 ? "" : "s")</summary>
@@ -26,6 +36,7 @@
 
 @code {
     [Parameter] public CommitDetails? Details { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<GitRef> Refs { get; set; } = [];
     [Parameter] public bool Busy { get; set; }
     [Parameter] public EventCallback<FileQuery> InspectFile { get; set; }
 }
