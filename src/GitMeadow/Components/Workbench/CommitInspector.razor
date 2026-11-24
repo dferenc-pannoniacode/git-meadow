@@ -1,6 +1,26 @@
 <section class="panel inspection" aria-label="Commit details">
     <header class="panel-heading">
-        <div><h2>Commit details</h2>@if (Details is not null) { <p class="mono" title="@Details.Hash">@Details.Hash[..Math.Min(12, Details.Hash.Length)]</p> }</div>
+        <div>
+            <h2>Commit details</h2>
+            @if (Details is not null)
+            {
+                var refs = Refs.Where(reference => reference.Hash == Details.Hash).ToArray();
+                <p class="mono" title="@Details.Hash">@Details.Hash[..Math.Min(12, Details.Hash.Length)]</p>
+                @if (refs.Length > 0)
+                {
+                    <ul class="commit-refs" aria-label="Commit references">
+                        @foreach (var reference in refs)
+                        {
+                            <li @key="reference" class="ref-chip @reference.Kind">@reference.Name</li>
+                        }
+                    </ul>
+                }
+                <div class="commit-metadata">
+                    <strong title="@Details.Email">@Details.Author</strong>
+                    <time datetime="@Details.Date.ToString("O")">@Details.Date.ToString("MMM d, yyyy · HH:mm zzz")</time>
+                </div>
+            }
+        </div>
     </header>
     @if (Details is null)
     {
@@ -8,20 +28,7 @@
     }
     else
     {
-        var refs = Refs.Where(reference => reference.Hash == Details.Hash).ToArray();
-        <div class="commit-summary">
-            <p class="commit-message">@Details.Message</p>
-            <div><strong>@Details.Author</strong><span title="@Details.Email">@Details.Date.ToString("MMM d, yyyy · HH:mm zzz")</span></div>
-            @if (refs.Length > 0)
-            {
-                <ul class="commit-refs" aria-label="Commit references">
-                    @foreach (var reference in refs)
-                    {
-                        <li @key="reference" class="ref-chip @reference.Kind">@reference.Name</li>
-                    }
-                </ul>
-            }
-        </div>
+        <p class="commit-message">@Details.Message</p>
         <details class="commit-files">
             <summary>@Details.Files.Count changed file@(Details.Files.Count == 1 ? "" : "s")</summary>
             @foreach (var file in Details.Files)
