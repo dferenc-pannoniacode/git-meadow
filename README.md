@@ -6,12 +6,12 @@ Git Meadow is a local Git workbench for the browser. It runs as a .NET 11 Blazor
 
 ### Use the published image
 
-Save this as `compose.yaml` in a deployment directory. The `v0.9.0-rc7` prerelease supports `linux/amd64` and `linux/arm64`. Docker selects the matching image for your host. You can choose a different tag from the [Git Meadow container package](https://github.com/dferenc-pannoniacode/git-meadow/pkgs/container/git-meadow).
+Save this as `compose.yaml` in a deployment directory. The `v0.9.0-rc13` prerelease supports `linux/amd64` and `linux/arm64`. Docker selects the matching image for your host. You can choose a different tag from the [Git Meadow container package](https://github.com/dferenc-pannoniacode/git-meadow/pkgs/container/git-meadow).
 
 ```yaml
 services:
   git-meadow:
-    image: ghcr.io/dferenc-pannoniacode/git-meadow:v0.9.0-rc7
+    image: ghcr.io/dferenc-pannoniacode/git-meadow:v0.9.0-rc13
     ports:
       - "127.0.0.1:5081:8080"
     environment:
@@ -64,6 +64,10 @@ Open **Git settings** in the workspace header. In Docker, the `git-home` volume 
 
 You can also configure Git and OpenSSH in the container shell with `docker compose exec git-meadow sh` (or `docker exec -it <container> sh` for a standalone container). To manage the files from the host, bind-mount a dedicated directory at `/home/app`. Give the `app` user write access and keep `.ssh` at mode `0700` and private keys at `0600`.
 
+### Use Git LFS
+
+The Docker image includes Git LFS with its file filters enabled. Git Meadow disables Git hooks, including the LFS pre-push hook. To push a ref with new LFS objects, run `git lfs push <remote> <ref>` from the repository in the container shell, then push the ref in Git Meadow.
+
 ## Run with .NET
 
 Install the .NET SDK version specified in `global.json` and Git 2.40 or later on the machine that owns the repository files.
@@ -107,7 +111,7 @@ The Blazor template files retain their [upstream MIT notice](THIRD-PARTY-NOTICES
 
 ### Source in the Docker image
 
-Git Meadow runs Git as a separate executable. The image includes Git Meadow’s license and third-party notices in `/usr/share/doc/git-meadow/` and Git’s license in `/usr/share/doc/git-meadow/git-source/COPYING`.
+Git Meadow runs Git as a separate executable. The image includes Git Meadow’s license and third-party notices in `/usr/share/doc/git-meadow/`, Git’s license in `/usr/share/doc/git-meadow/git-source/COPYING`, and Git LFS’s license in `/usr/share/doc/git-meadow/git-lfs/LICENSE.md`.
 
 The image ships the Git Meadow source used to build it, including the Dockerfile and build configuration, in `/usr/share/doc/git-meadow/app-source/`. The exact source for the installed Alpine Git package, including the upstream archive, Alpine patches and build recipe, ships in `/usr/share/doc/git-meadow/git-source/`. Its `package.txt` records the package version and Alpine packaging commit.
 

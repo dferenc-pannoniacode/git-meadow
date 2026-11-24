@@ -15,7 +15,7 @@ RUN dotnet publish src/GitMeadow/GitMeadow.csproj -c Release --no-restore -p:Use
     ${APP_VERSION:+-p:InformationalVersion="$APP_VERSION"}
 
 FROM mcr.microsoft.com/dotnet/aspnet:11.0-alpine-extra AS runtime
-RUN apk add --no-cache git openssh-client-default curl \
+RUN apk add --no-cache git git-lfs openssh-client-default curl \
     && install -d -o app -g app /workspaces \
     && install -d -m 0700 -o app -g app /home/app /home/app/.ssh
 
@@ -32,12 +32,16 @@ RUN git_package=$(apk query --installed --format json --fields version,commit gi
     && SRCDEST="$PWD" srcdir=/tmp/git-source-links abuild -F fetch \
     && tar -xOf "git-${git_version%-r*}.tar.xz" "git-${git_version%-r*}/COPYING" > COPYING \
     && printf 'git=%s\naports=%s\n' "$git_version" "$aports_commit" > package.txt
+RUN lfs_version=$(apk query --installed --format json --fields version git-lfs | jq -er '.[0].version') \
+    && curl --fail --silent --show-error --location --retry 2 \
+        "https://raw.githubusercontent.com/git-lfs/git-lfs/v${lfs_version%-r*}/LICENSE.md" -o /git-lfs-license.md
 
 FROM runtime
 WORKDIR /app
 COPY --from=build /out .
 COPY --from=app-source / /usr/share/doc/git-meadow/app-source/
 COPY --from=git-source /git-source/ /usr/share/doc/git-meadow/git-source/
+COPY --from=git-source /git-lfs-license.md /usr/share/doc/git-meadow/git-lfs/LICENSE.md
 COPY LICENSE THIRD-PARTY-NOTICES /usr/share/doc/git-meadow/
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     GitMeadow__Workspace=/workspaces \
