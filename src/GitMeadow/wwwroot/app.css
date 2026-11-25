@@ -63,6 +63,10 @@ a { color: inherit; }
 .ref-group summary span { color: #b7c8be; margin-left: 5px; font-family: var(--mono); font-size: 10px; }
 .ref-group .nav-ref { padding-left: 14px; }
 .ref-current, .nav-ref.current { color: var(--lime); }
+.tag-push-status { flex: none; margin-left: auto; padding: 2px 5px; border-radius: 4px; background: #2b4037; color: #ccdcd2; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.tag-push-status.on-origin { background: #2b4939; color: #c1edc9; }
+.tag-push-status.local-only { background: #49402d; color: #f4dda0; }
+.tag-push-status.different { background: #543832; color: #ffcbc2; }
 .sidebar-foot { border-top: 1px solid #2d4138; display: flex; min-height: 70px; align-items: center; padding: 14px 20px; gap: 10px; font-size: 12px; }
 .sidebar-foot > span:last-child { min-width: 0; }
 .sidebar-foot small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--forest-muted); font: 10px var(--mono); margin-top: 4px; }

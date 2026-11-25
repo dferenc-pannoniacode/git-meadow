@@ -37,7 +37,9 @@
             <RefGroup Title="Remote branches" Symbol="↗" Items="@Refs("remote")" Repository="@repository"
                       OpenContextMenu="OpenReferenceContextMenu" Browse="Browse" Busy="Busy" />
             <RefGroup Title="Tags" Symbol="◇" Items="@Refs("tag")" Repository="@repository"
-                      OpenContextMenu="OpenReferenceContextMenu" Browse="Browse" Busy="Busy" InitiallyOpen="true" />
+                      OpenContextMenu="OpenReferenceContextMenu" Browse="Browse" Busy="Busy" InitiallyOpen="true"
+                      ShowTagPushStatus="@(State.Remotes.Any(remote => remote.Name == "origin"))"
+                      OriginTags="OriginTags" CheckingOriginTags="CheckingOriginTags" />
         }
     </div>
 
@@ -56,6 +58,8 @@
     [Parameter] public string? Revision { get; set; }
     [Parameter] public string Root { get; set; } = "";
     [Parameter] public RepositoryState? State { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? OriginTags { get; set; }
+    [Parameter] public bool CheckingOriginTags { get; set; }
     [Parameter] public bool Busy { get; set; }
     [Parameter] public EventCallback<string> Open { get; set; }
     [Parameter] public EventCallback<(string Repository, MouseEventArgs Pointer)> OpenContextMenu { get; set; }

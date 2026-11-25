@@ -50,7 +50,7 @@ internal sealed partial class GitCommandHistory
         var hideResponse = configKey >= 0 || arguments.Count > 0 &&
             (arguments[0] == "credential" || arguments[0].StartsWith("credential-", StringComparison.Ordinal));
         var hasRemoteUrls = arguments.Count > 0 &&
-            arguments[0] is "remote" or "clone" or "fetch" or "pull" or "push" or "submodule";
+            arguments[0] is "remote" or "clone" or "fetch" or "pull" or "push" or "submodule" or "ls-remote";
         var command = "git " + string.Join(' ', arguments.Select((argument, index) =>
             configKey >= 0 && index > configKey ? "[hidden]" : QuoteArgument(RedactUrls(argument, hasRemoteUrls))));
 

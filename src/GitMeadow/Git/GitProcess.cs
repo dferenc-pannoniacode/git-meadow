@@ -174,10 +174,11 @@ internal static class GitProcess
         try
         {
             var lfsTransfer = hooksPath is not null || arguments is ["lfs", "pull", ..];
-            var timeout = TimeSpan.FromMinutes(lfsTransfer ? 30 : 3);
-            var minutes = lfsTransfer ? "30" : "three";
+            var (timeout, duration) = arguments is ["ls-remote", ..]
+                ? (TimeSpan.FromSeconds(10), "ten seconds")
+                : lfsTransfer ? (TimeSpan.FromMinutes(30), "30 minutes") : (TimeSpan.FromMinutes(3), "three minutes");
             result = await RunProcessAsync(start, input, strictOutput, timeout,
-                $"Git did not finish within {minutes} minutes. Refresh the repository before retrying.");
+                $"Git did not finish within {duration}. Refresh the repository before retrying.");
         }
         catch (Exception exception)
         {

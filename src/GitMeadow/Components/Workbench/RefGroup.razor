@@ -5,11 +5,16 @@
         <summary>@Title <span>@Items.Count</span></summary>
         @foreach (var reference in Items)
         {
-            <button type="button" class="nav-ref" disabled="@Busy" title="@reference.Name" @key="reference.Name"
+            var status = TagStatus(reference);
+            <button type="button" class="nav-ref" disabled="@Busy" title="@(status is { } badge ? $"{reference.Name} · {badge.Description}" : reference.Name)" @key="reference.Name"
                     @onclick="@(() => Browse.InvokeAsync(reference.Qualified()))"
                     @oncontextmenu="@(pointer => OpenContextMenu.InvokeAsync((repository, reference, pointer)))" @oncontextmenu:preventDefault>
                 <span aria-hidden="true" class="@(Current == reference.Name ? "ref-current" : null)">@Symbol</span>
                 <span>@reference.Name</span>
+                @if (status is { } tagStatus)
+                {
+                    <span class="tag-push-status @tagStatus.Class">@tagStatus.Label</span>
+                }
             </button>
         }
     </details>
@@ -23,6 +28,25 @@
     [Parameter] public string? Current { get; set; }
     [Parameter] public bool InitiallyOpen { get; set; }
     [Parameter] public bool Busy { get; set; }
+    [Parameter] public bool ShowTagPushStatus { get; set; }
+    [Parameter] public IReadOnlyDictionary<string, string>? OriginTags { get; set; }
+    [Parameter] public bool CheckingOriginTags { get; set; }
     [Parameter] public EventCallback<(string Repository, GitRef Reference, MouseEventArgs Pointer)> OpenContextMenu { get; set; }
     [Parameter] public EventCallback<string> Browse { get; set; }
+
+    private (string Label, string Description, string Class)? TagStatus(GitRef reference)
+    {
+        if (!ShowTagPushStatus)
+            return null;
+        if (CheckingOriginTags)
+            return ("Checking…", "Checking tags on origin", "");
+
+        return reference.GetTagPushStatus(OriginTags) switch
+        {
+            TagPushStatus.OnOrigin => ("On origin", "Tag matches origin", "on-origin"),
+            TagPushStatus.LocalOnly => ("Local only", "Tag is absent from origin", "local-only"),
+            TagPushStatus.Different => ("Different", "Tag on origin points to a different object", "different"),
+            _ => ("Unknown", "Could not check tags on origin", "")
+        };
+    }
 }

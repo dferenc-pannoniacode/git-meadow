@@ -9,7 +9,8 @@
 
 <div class="workbench" inert="@ModalOpen">
     <RepositorySidebar Repositories="_repositories" Current="@_repo" Revision="@_revision" Root="@Workspace.Root"
-                       State="_state" Busy="_busy" Open="OpenRepositoryAsync" OpenContextMenu="ShowRepositoryActions" Add="ShowRepositoryMenu"
+                       State="_state" OriginTags="_originTags" CheckingOriginTags="@(_originTagCheck is not null)"
+                       Busy="_busy" Open="OpenRepositoryAsync" OpenContextMenu="ShowRepositoryActions" Add="ShowRepositoryMenu"
                        AddReference="ShowCreateReferenceMenu" OpenReferenceContextMenu="ShowRefActions" Browse="BrowseAsync" />
 
     <main class="main">

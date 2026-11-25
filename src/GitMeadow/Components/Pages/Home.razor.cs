@@ -20,12 +20,19 @@ public partial class Home
     private sealed record CommitMenu(string Hash, MouseEventArgs Pointer, IReadOnlyList<Operation> Actions);
     private sealed record RepositoryMenu(string Repository, MouseEventArgs Pointer);
     private sealed record ReferenceMenu(GitRef Reference, MouseEventArgs Pointer, IReadOnlyList<Operation> Actions);
+    private sealed class OriginTagCheck(string repository)
+    {
+        public string Repository { get; } = repository;
+        public bool Started { get; set; }
+    }
 
     private IReadOnlyList<string> _repositories = [];
     private string? _repo;
     private string? _revision;
     private int _commitLimit = CommitPage;
     private RepositoryState? _state;
+    private OriginTagCheck? _originTagCheck;
+    private IReadOnlyDictionary<string, string>? _originTags;
     private CommitDetails? _details;
     private ViewTab _tab;
     private bool _busy = true;
@@ -78,7 +85,10 @@ public partial class Home
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender)
+        {
+            await CheckOriginTagsAsync();
             return;
+        }
 
         var selection = new RepositorySelectionStorage(JS, Logger, Workspace.Root);
         _repositorySelection = selection;
@@ -105,13 +115,53 @@ public partial class Home
         StateHasChanged();
     }
 
+    private void UpdateRepositoryState(RepositoryState state, bool refreshOriginTags = false)
+    {
+        var previousOrigin = GetTagStatusOrigin(_state);
+        var origin = GetTagStatusOrigin(state);
+        _state = state;
+        if (refreshOriginTags || origin != previousOrigin)
+        {
+            _originTags = null;
+            _originTagCheck = _repo is { } repo && origin is not null ? new OriginTagCheck(repo) : null;
+        }
+    }
+
+    private static GitRemote? GetTagStatusOrigin(RepositoryState? state) =>
+        state is not null && state.Refs.Any(reference => reference.Kind == "tag")
+            ? state.Remotes.FirstOrDefault(remote => remote.Name == "origin")
+            : null;
+
+    private async Task CheckOriginTagsAsync()
+    {
+        if (_originTagCheck is not { Started: false } check)
+            return;
+
+        check.Started = true;
+        IReadOnlyDictionary<string, string>? tags = null;
+        try
+        {
+            await CommandHistory.CaptureAsync(async () => { tags = await Workspace.ReadOriginTagsAsync(check.Repository); });
+        }
+        catch (Exception ex) when (IsWorkspaceError(ex))
+        {
+            Logger.LogDebug("Could not check origin tags. Error type {ErrorType}.", ex.GetType().Name);
+        }
+
+        if (ReferenceEquals(_originTagCheck, check))
+        {
+            (_originTagCheck, _originTags) = (null, tags);
+            StateHasChanged();
+        }
+    }
+
     private Task RefreshAsync() => WorkAsync(async () =>
     {
         _repositories = await Workspace.ListAsync();
         if (_repo is { } repo)
         {
             IncludeRepository(repo);
-            await ReloadAsync();
+            await ReloadAsync(refreshOriginTags: true);
         }
     });
 
@@ -135,7 +185,8 @@ public partial class Home
         var details = state.Commits.FirstOrDefault() is { } first
             ? await Workspace.CommitAsync(repo, first.Hash)
             : null;
-        (_repo, _state, _details) = (repo, state, details);
+        (_repo, _details) = (repo, details);
+        UpdateRepositoryState(state, refreshOriginTags: true);
         _revision = null;
         _commitLimit = CommitPage;
         _tab = ViewTab.History;
@@ -161,7 +212,8 @@ public partial class Home
         var details = state.Commits.FirstOrDefault() is { } first
             ? await Workspace.CommitAsync(_repo, first.Hash)
             : null;
-        (_revision, _state, _details, _tab) = (revision, state, details, ViewTab.History);
+        (_revision, _details, _tab) = (revision, details, ViewTab.History);
+        UpdateRepositoryState(state);
         _commitLimit = CommitPage;
     });
 
@@ -171,7 +223,7 @@ public partial class Home
             return;
 
         var next = Math.Min(_commitLimit + CommitPage, MaximumCommits);
-        _state = await Workspace.ReadAsync(_repo, _revision, next);
+        UpdateRepositoryState(await Workspace.ReadAsync(_repo, _revision, next));
         _commitLimit = next;
     });
 
@@ -277,34 +329,36 @@ public partial class Home
             (_change, _workingDiff, _workingError, _hunks) = (null, null, null, []);
     }
 
-    private async Task ReloadAsync()
+    private async Task ReloadAsync(bool refreshOriginTags = false)
     {
         if (_repo is null)
             return;
 
+        RepositoryState state;
         try
         {
-            _state = await Workspace.ReadAsync(_repo, _revision, _commitLimit);
+            state = await Workspace.ReadAsync(_repo, _revision, _commitLimit);
         }
         catch (InvalidOperationException) when (_revision is not null)
         {
             _revision = null;
-            _state = await Workspace.ReadAsync(_repo, commitLimit: _commitLimit);
+            state = await Workspace.ReadAsync(_repo, commitLimit: _commitLimit);
         }
 
-        var hash = _state.Commits.FirstOrDefault(commit => commit.Hash == _details?.Hash)?.Hash
-            ?? _state.Commits.FirstOrDefault()?.Hash;
+        UpdateRepositoryState(state, refreshOriginTags);
+        var hash = state.Commits.FirstOrDefault(commit => commit.Hash == _details?.Hash)?.Hash
+            ?? state.Commits.FirstOrDefault()?.Hash;
         _details = hash is null ? null : await Workspace.CommitAsync(_repo, hash);
 
         if (_tab == ViewTab.Changes)
             await RefreshChangeAsync();
     }
 
-    private async Task<bool> TryReloadAsync()
+    private async Task<bool> TryReloadAsync(bool refreshOriginTags = false)
     {
         try
         {
-            await ReloadAsync();
+            await ReloadAsync(refreshOriginTags);
             return true;
         }
         catch (Exception ex) when (IsWorkspaceError(ex))
@@ -630,6 +684,9 @@ public partial class Home
         if (dialog && _operationRepo != _repo)
             throw new InvalidOperationException("The selected repository changed. Open the operation again.");
 
+        var refreshOriginTags = operation.Action is GitAction.Fetch or GitAction.Pull or GitAction.Push
+            or GitAction.Tag or GitAction.TagAnnotated or GitAction.DeleteTag
+            or GitAction.AddRemote or GitAction.SetRemote or GitAction.RemoveRemote;
         string result;
         try
         {
@@ -637,7 +694,7 @@ public partial class Home
         }
         catch (Exception ex) when (IsWorkspaceError(ex))
         {
-            if (await TryReloadAsync() && _state?.Operation is not null && _state.Changes.Any(WorkingTree.IsConflict))
+            if (await TryReloadAsync(refreshOriginTags) && _state?.Operation is not null && _state.Changes.Any(WorkingTree.IsConflict))
             {
                 CloseDialog();
                 _tab = ViewTab.Changes;
@@ -650,7 +707,7 @@ public partial class Home
         _status = string.IsNullOrWhiteSpace(result) ? $"{operation.Title} completed." : result.Trim();
         if (operation.Action == GitAction.TrackLfs)
             _tab = ViewTab.Changes;
-        if (await TryReloadAsync() && operation.Action == GitAction.RebasePlan && _state?.Operation == "rebase")
+        if (await TryReloadAsync(refreshOriginTags) && operation.Action == GitAction.RebasePlan && _state?.Operation == "rebase")
         {
             _tab = ViewTab.Changes;
             await RefreshChangeAsync();

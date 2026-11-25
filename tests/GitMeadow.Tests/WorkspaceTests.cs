@@ -412,6 +412,54 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task Tag_status_follows_origin_and_compares_annotated_tag_objects()
+    {
+        var remote = Directory.CreateDirectory(Path.Combine(_git.Root, "origin.git")).FullName;
+        await _git.GitAsync("origin.git", "init", "--bare", "-b", "main");
+        var source = await _git.CreateAsync("source");
+        var commit = await _git.CommitFileAsync(source, "base.txt", "base\n", "Base");
+        await Workspace.ExecuteAsync(source, GitAction.AddRemote, "origin", remote);
+        await _git.GitAsync(source, "tag", "lightweight");
+        await _git.GitAsync(source, "tag", "-a", "release/v1", "-m", "Original annotation");
+
+        var localTags = (await Workspace.ReadAsync(source)).Refs.Where(reference => reference.Kind == "tag")
+            .ToDictionary(reference => reference.Name);
+        var beforePush = await Workspace.ReadOriginTagsAsync(source);
+        Assert.Equal(TagPushStatus.LocalOnly, localTags["lightweight"].GetTagPushStatus(beforePush));
+        Assert.Equal(TagPushStatus.LocalOnly, localTags["release/v1"].GetTagPushStatus(beforePush));
+
+        await Workspace.ExecuteAsync(source, GitAction.Push, "origin", "refs/tags/lightweight");
+        await Workspace.ExecuteAsync(source, GitAction.Push, "origin", "refs/tags/release/v1");
+
+        var afterPush = await Workspace.ReadOriginTagsAsync(source);
+        Assert.Equal(TagPushStatus.OnOrigin, localTags["lightweight"].GetTagPushStatus(afterPush));
+        Assert.Equal(TagPushStatus.OnOrigin, localTags["release/v1"].GetTagPushStatus(afterPush));
+
+        await _git.GitAsync(source, "tag", "-f", "-a", "release/v1", "-m", "New annotation", commit);
+        await _git.GitAsync("origin.git", "tag", "-d", "lightweight");
+
+        var currentTag = Assert.Single((await Workspace.ReadAsync(source)).Refs, reference => reference.Name == "release/v1");
+        var afterChanges = await Workspace.ReadOriginTagsAsync(source);
+        Assert.Equal(commit, currentTag.Hash);
+        Assert.Equal(TagPushStatus.Different, currentTag.GetTagPushStatus(afterChanges));
+        Assert.Equal(TagPushStatus.LocalOnly, localTags["lightweight"].GetTagPushStatus(afterChanges));
+    }
+
+    [Fact]
+    public async Task Unreachable_origin_does_not_produce_an_empty_tag_listing()
+    {
+        var remote = Directory.CreateDirectory(Path.Combine(_git.Root, "not-a-repository")).FullName;
+        var source = await _git.CreateAsync("source");
+        await _git.CommitFileAsync(source, "base.txt", "base\n", "Base");
+        await _git.GitAsync(source, "tag", "release");
+        await Workspace.ExecuteAsync(source, GitAction.AddRemote, "origin", remote);
+
+        var tag = Assert.Single((await Workspace.ReadAsync(source)).Refs, reference => reference.Kind == "tag");
+        await Assert.ThrowsAsync<GitCommandException>(() => Workspace.ReadOriginTagsAsync(source));
+        Assert.Equal(TagPushStatus.Unknown, tag.GetTagPushStatus(null));
+    }
+
+    [Fact]
     public async Task Detached_tag_push_with_blank_remote_uses_the_configured_push_default()
     {
         var origin = Directory.CreateDirectory(Path.Combine(_git.Root, "origin.git")).FullName;

@@ -179,7 +179,10 @@ public sealed partial class GitWorkspace
                 var tag when tag.StartsWith("refs/tags/", StringComparison.Ordinal) => (tag[10..], "tag"),
                 _ => throw new InvalidOperationException("Git returned an unexpected reference namespace.")
             };
-            refs.Add(new GitRef(name, fields[2].Length > 0 ? fields[2] : fields[1], kind));
+            refs.Add(new GitRef(name, fields[2].Length > 0 ? fields[2] : fields[1], kind)
+            {
+                RefObjectId = fields[1]
+            });
         }
         return refs;
     }

@@ -7,6 +7,29 @@ public sealed partial class GitWorkspace
     [GeneratedRegex(@"^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+:[^\\\s].*$", RegexOptions.CultureInvariant)]
     private static partial Regex ScpAddress();
 
+    internal async Task<IReadOnlyDictionary<string, string>> ReadOriginTagsAsync(string repo)
+    {
+        string[] arguments = ["ls-remote", "--refs", "--tags", "--", "origin"];
+        var (path, localOutput) = await WithRepositoryAsync(repo, async repository =>
+        {
+            var url = (await RunAsync(repository.Path, ["remote", "get-url", "--", "origin"])).TrimEnd('\r', '\n');
+            var allowLocal = ValidateRemote(repository.Path, url, "The fetch URL for remote 'origin'").IsLocal;
+            // A remote edit must not change the endpoint while local file transport is enabled.
+            return (repository.Path, allowLocal ? await RunAsync(repository.Path, arguments, localTransport: true) : null);
+        });
+        var output = localOutput ?? await RunAsync(path, arguments);
+
+        const string prefix = "refs/tags/";
+        var tags = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in Lines(output))
+        {
+            var fields = line.Split('\t', 2);
+            if (fields is [var objectId, var reference] && reference.StartsWith(prefix, StringComparison.Ordinal))
+                tags.Add(reference[prefix.Length..], objectId);
+        }
+        return tags;
+    }
+
     private async Task<string> AddOrSetRemoteAsync(Repository repo, string name, string? url, bool add)
     {
         var remote = ValidateRemote(repo.Path, Required(url, "Enter a remote URL."));

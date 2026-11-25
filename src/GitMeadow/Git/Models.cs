@@ -15,7 +15,21 @@ public sealed record RepositoryState(
 
 public sealed record GitCommit(string Hash, IReadOnlyList<string> Parents, string Author, DateTimeOffset Date, string Subject);
 public sealed record GitChange(string Path, string? OriginalPath, char Index, char WorkTree);
-public sealed record GitRef(string Name, string Hash, string Kind);
+public sealed record GitRef(string Name, string Hash, string Kind)
+{
+    internal string RefObjectId { get; init; } = Hash;
+
+    internal TagPushStatus GetTagPushStatus(IReadOnlyDictionary<string, string>? originTags)
+    {
+        if (originTags is null)
+            return TagPushStatus.Unknown;
+        if (!originTags.TryGetValue(Name, out var remoteObjectId))
+            return TagPushStatus.LocalOnly;
+        return remoteObjectId == RefObjectId ? TagPushStatus.OnOrigin : TagPushStatus.Different;
+    }
+}
+
+internal enum TagPushStatus { Unknown, LocalOnly, OnOrigin, Different }
 public sealed record GitRemote(string Name, string FetchUrl, string PushUrl)
 {
     internal bool HasEmbeddedHttpCredentials { get; init; }
