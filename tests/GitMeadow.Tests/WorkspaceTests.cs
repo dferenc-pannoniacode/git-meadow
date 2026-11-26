@@ -26,6 +26,29 @@ public sealed class WorkspaceTests : IDisposable
     }
 
     [Fact]
+    public async Task Catalog_keeps_remembered_deep_checkouts_and_omits_unavailable_paths()
+    {
+        var direct = await Workspace.CreateAsync("direct");
+        var first = Path.Combine("Team projects", "First checkout");
+        var second = Path.Combine("Team projects", "Subgroup", "Second checkout");
+        var unopened = Path.Combine("Team projects", "Unopened checkout");
+        foreach (var checkout in new[] { first, second, unopened })
+        {
+            Directory.CreateDirectory(Path.Combine(_git.Root, checkout));
+            await Workspace.CreateInFolderAsync(checkout);
+        }
+        var outside = Path.Combine("..", "outside");
+        Directory.CreateDirectory(Path.Combine(_git.Root, outside));
+        await _git.GitAsync(outside, "init", "-b", "main");
+
+        Assert.Equal([direct], await Workspace.ListAsync());
+        var reopenedWorkspace = new GitWorkspace(_git.Root);
+        var catalog = await reopenedWorkspace.ListAsync([first, "missing", direct, outside, second, Path.Combine(".", first)]);
+
+        Assert.Equal([direct, first, second], catalog);
+    }
+
+    [Fact]
     public async Task Repository_browser_lists_only_immediate_folders_and_opens_a_nested_checkout()
     {
         var nested = Path.Combine("Team projects", "Nested checkout");

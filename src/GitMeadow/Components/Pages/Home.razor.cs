@@ -27,6 +27,7 @@ public partial class Home
     }
 
     private IReadOnlyList<string> _repositories = [];
+    private readonly HashSet<string> _rememberedRepositories = new(StringComparer.Ordinal);
     private string? _repo;
     private string? _revision;
     private int _commitLimit = CommitPage;
@@ -37,7 +38,9 @@ public partial class Home
     private ViewTab _tab;
     private bool _busy = true;
     private bool _terminalOpen;
-    private RepositorySelectionStorage? _repositorySelection;
+    private WorkbenchBrowser? _browser;
+    private ElementReference _workbench;
+    private ElementReference _sidebarResizeHandle;
     private bool _gitSettingsOpen;
     private string? _error;
     private string? _status;
@@ -90,17 +93,22 @@ public partial class Home
             return;
         }
 
-        var selection = new RepositorySelectionStorage(JS, Logger, Workspace.Root);
-        _repositorySelection = selection;
+        var browser = new WorkbenchBrowser(JS, Logger, Workspace.Root);
+        _browser = browser;
+        await browser.InitializeSidebarResizeAsync(_workbench, _sidebarResizeHandle);
         _busy = false;
         await WorkAsync(async () =>
         {
-            _repositories = await Workspace.ListAsync();
-            if (await selection.ReadAsync() is { } savedRepository)
+            var preferences = await browser.ReadRepositoriesAsync();
+            _rememberedRepositories.UnionWith(preferences.Remembered);
+            await RefreshRepositoryListAsync();
+            if (preferences.Selected is { } savedRepository)
             {
                 try
                 {
-                    await ReadRepositoryAsync(savedRepository);
+                    var repo = await ReadRepositoryAsync(savedRepository);
+                    if (_rememberedRepositories.Add(repo))
+                        await browser.RememberRepositoryAsync(repo, select: false);
                     return;
                 }
                 catch (Exception ex) when (IsWorkspaceError(ex))
@@ -157,13 +165,13 @@ public partial class Home
 
     private Task RefreshAsync() => WorkAsync(async () =>
     {
-        _repositories = await Workspace.ListAsync();
-        if (_repo is { } repo)
-        {
-            IncludeRepository(repo);
+        await RefreshRepositoryListAsync();
+        if (_repo is not null)
             await ReloadAsync(refreshOriginTags: true);
-        }
     });
+
+    private async Task RefreshRepositoryListAsync() =>
+        _repositories = await Workspace.ListAsync(_rememberedRepositories);
 
     private Task OpenRepositoryAsync(string repo) => WorkAsync(async () =>
     {
@@ -174,8 +182,9 @@ public partial class Home
     private async Task SelectRepositoryAsync(string path)
     {
         var repo = await ReadRepositoryAsync(path);
-        if (_repositorySelection is not null)
-            await _repositorySelection.WriteAsync(repo);
+        _rememberedRepositories.Add(repo);
+        if (_browser is not null)
+            await _browser.RememberRepositoryAsync(repo);
     }
 
     private async Task<string> ReadRepositoryAsync(string path)
@@ -618,7 +627,7 @@ public partial class Home
             throw;
         }
 
-        _repositories = await Workspace.ListAsync();
+        await RefreshRepositoryListAsync();
         await SelectRepositoryAsync(repo);
         CloseDialog();
     }, dialog: true);
@@ -666,7 +675,7 @@ public partial class Home
     private Task CreateSampleAsync() => WorkAsync(async () =>
     {
         var repo = await Sample.CreateAsync();
-        _repositories = await Workspace.ListAsync();
+        await RefreshRepositoryListAsync();
         await SelectRepositoryAsync(repo);
     });
 
@@ -713,7 +722,7 @@ public partial class Home
             await RefreshChangeAsync();
         }
         if (operation.Action is GitAction.AddWorktree or GitAction.RemoveWorktree)
-            _repositories = await Workspace.ListAsync();
+            await RefreshRepositoryListAsync();
     }, dialog);
 
     private async Task WorkAsync(Func<Task> work, bool dialog = false)

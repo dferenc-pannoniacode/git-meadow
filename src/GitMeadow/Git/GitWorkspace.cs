@@ -15,7 +15,9 @@ public sealed partial class GitWorkspace(string root)
 
     public string Root { get; } = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
 
-    public Task<IReadOnlyList<string>> ListAsync()
+    public Task<IReadOnlyList<string>> ListAsync() => ListAsync([]);
+
+    internal Task<IReadOnlyList<string>> ListAsync(IReadOnlyCollection<string> rememberedRepositories)
     {
         ValidateNoLinks(Root, Root);
         Directory.CreateDirectory(Root);
@@ -28,6 +30,25 @@ public sealed partial class GitWorkspace(string root)
             var name = Path.GetFileName(directory);
             if (!name.StartsWith('.') && !IsLink(directory) && HasGitMarker(directory))
                 repositories.Add(name);
+        }
+
+        var listed = repositories.ToHashSet(PathComparer);
+        foreach (var remembered in rememberedRepositories)
+        {
+            try
+            {
+                var path = GetWorkspacePath(remembered);
+                var relativePath = Path.GetRelativePath(Root, path);
+                if (!listed.Contains(relativePath) && HasGitMarker(path))
+                {
+                    repositories.Add(relativePath);
+                    listed.Add(relativePath);
+                }
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                // A remembered path can become unavailable while the workspace is closed.
+            }
         }
 
         return Task.FromResult<IReadOnlyList<string>>(repositories);

@@ -7,11 +7,14 @@
 @inject ILogger<Home> Logger
 @inject GitCommandHistory CommandHistory
 
-<div class="workbench" inert="@ModalOpen">
+<div @ref="_workbench" class="workbench" inert="@ModalOpen">
     <RepositorySidebar Repositories="_repositories" Current="@_repo" Revision="@_revision" Root="@Workspace.Root"
                        State="_state" OriginTags="_originTags" CheckingOriginTags="@(_originTagCheck is not null)"
                        Busy="_busy" Open="OpenRepositoryAsync" OpenContextMenu="ShowRepositoryActions" Add="ShowRepositoryMenu"
                        AddReference="ShowCreateReferenceMenu" OpenReferenceContextMenu="ShowRefActions" Browse="BrowseAsync" />
+
+    <div @ref="_sidebarResizeHandle" class="sidebar-resize" role="separator" aria-orientation="vertical"
+         aria-label="Resize repository sidebar" aria-controls="repository-sidebar"></div>
 
     <main class="main">
         <header class="topbar">
